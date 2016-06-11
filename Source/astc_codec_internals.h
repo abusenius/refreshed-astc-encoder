@@ -59,9 +59,10 @@ void astc_codec_internal_error(const char *filename, int linenumber);
 
 // the PRINT_DIAGNOSTICS macro enables the -diag commandline switch,
 // which can be used to look for codec bugs
-#define DEBUG_PRINT_DIAGNOSTICS
+//#define DEBUG_PRINT_DIAGNOSTICS
 
 #ifdef DEBUG_PRINT_DIAGNOSTICS
+	static_assert(false, "DEBUG_PRINT_DIAGNOSTICS is unsupported in this version of encoder"); // it's currently broken in batch mode
 	extern int print_diagnostics;
 #endif
 

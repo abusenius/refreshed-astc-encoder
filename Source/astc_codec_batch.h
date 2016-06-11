@@ -49,6 +49,8 @@ private:
 	int xdim, ydim, zdim;
 	astc_decode_mode decode_mode;
 	error_weighting_params ewp;
+
+	//buffers to store intermediate data during encoding
 	compress_symbolic_block_buffers tmpbuf;
 	compress_fixed_partition_buffers tmpplanes;
 

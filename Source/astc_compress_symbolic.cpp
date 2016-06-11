@@ -1315,34 +1315,6 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 	int x, y, z;
 
 
-	#ifdef DEBUG_PRINT_DIAGNOSTICS
-		if (print_diagnostics)
-		{
-			printf("Diagnostics of block of dimension %d x %d x %d\n\n", xdim, ydim, zdim);
-	
-			printf("XPos: %d  YPos: %d  ZPos: %d\n", xpos, ypos, zpos);
-	
-			printf("Red-min: %f   Red-max: %f\n", blk->red_min, blk->red_max);
-			printf("Green-min: %f   Green-max: %f\n", blk->green_min, blk->green_max);
-			printf("Blue-min: %f   Blue-max: %f\n", blk->blue_min, blk->blue_max);
-			printf("Alpha-min: %f   Alpha-max: %f\n", blk->alpha_min, blk->alpha_max);
-			printf("Grayscale: %d\n", blk->grayscale);
-	
-			for (z = 0; z < zdim; z++)
-				for (y = 0; y < ydim; y++)
-					for (x = 0; x < xdim; x++)
-					{
-						int idx = ((z * ydim + y) * xdim + x) * 4;
-						printf("Texel (%d %d %d) : orig=< %g, %g, %g, %g >, work=< %g, %g, %g, %g >\n",
-							x, y, z,
-							blk->orig_data[idx],
-							blk->orig_data[idx + 1], blk->orig_data[idx + 2], blk->orig_data[idx + 3], blk->work_data[idx], blk->work_data[idx + 1], blk->work_data[idx + 2], blk->work_data[idx + 3]);
-					}
-			printf("\n");
-		}
-	#endif
-
-
 	if (blk->red_min == blk->red_max && blk->green_min == blk->green_max && blk->blue_min == blk->blue_max && blk->alpha_min == blk->alpha_max)
 	{
 
@@ -1389,16 +1361,6 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 			scb->constant_color[3] = (int)floor(alpha * 65535.0f + 0.5f);
 		}
 
-		#ifdef DEBUG_PRINT_DIAGNOSTICS
-			if (print_diagnostics)
-			{
-				printf("Block is single-color <%4.4X %4.4X %4.4X %4.4X>\n", scb->constant_color[0], scb->constant_color[1], scb->constant_color[2], scb->constant_color[3]);
-			}
-		#endif
-
-		if (print_tile_errors)
-			printf("0\n");
-
 		physical_compressed_block psb = symbolic_to_physical(xdim, ydim, zdim, scb);
 		physical_to_symbolic(xdim, ydim, zdim, psb, scb);
 
@@ -1412,20 +1374,6 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 														xdim, ydim, zdim,
 														ewp, blk, ewb, ewbo);
 
-	#ifdef DEBUG_PRINT_DIAGNOSTICS
-		if (print_diagnostics)
-		{
-			printf("\n");
-			for (z = 0; z < zdim; z++)
-				for (y = 0; y < ydim; y++)
-					for (x = 0; x < xdim; x++)
-					{
-						int idx = (z * ydim + y) * xdim + x;
-						printf("ErrorWeight (%d %d %d) : < %g, %g, %g, %g >\n", x, y, z, ewb->error_weights[idx].x, ewb->error_weights[idx].y, ewb->error_weights[idx].z, ewb->error_weights[idx].w);
-					}
-			printf("\n");
-		}
-	#endif
 
 	symbolic_compressed_block *tempblocks = tmpbuf->tempblocks;
 
@@ -1452,16 +1400,6 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 	float avgblock_errorval = compute_imageblock_difference(xdim, ydim, zdim,
 															blk, temp, ewb) * 4.0f;	// bias somewhat against the average-color block.
 
-	#ifdef DEBUG_PRINT_DIAGNOSTICS
-		if (print_diagnostics)
-		{
-			printf("\n-----------------------------------\n");
-			printf("Average-color block test completed\n");
-			printf("Resulting error value: %g\n", avgblock_errorval);
-		}
-	#endif
-
-
 	if (avgblock_errorval < error_of_best_block)
 	{
 		#ifdef DEBUG_PRINT_DIAGNOSTICS
@@ -1480,6 +1418,9 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 			printf("-----------------------------------\n");
 		}
 	#endif
+
+	if ((error_of_best_block / error_weight_sum) < ewp->texel_avg_error_limit)
+		goto END_OF_TESTS;
 #endif
 
 
@@ -1493,11 +1434,6 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 	float errorval_mult[2] = { 2.5, 1 };
 	modecutoffs[0] = 0;
 	modecutoffs[1] = mode_cutoff;
-
-	#if 0
-		if ((error_of_best_block / error_weight_sum) < ewp->texel_avg_error_limit)
-			goto END_OF_TESTS;
-	#endif
 
 	float best_errorval_in_mode;
 	for (i = 0; i < 2; i++)
@@ -1515,37 +1451,17 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 			float errorval = compute_imageblock_difference(xdim, ydim, zdim,
 														   blk, temp, ewb) * errorval_mult[i];
 
-			#ifdef DEBUG_PRINT_DIAGNOSTICS
-				if (print_diagnostics)
-				{
-					printf("\n-----------------------------------\n");
-					printf("Single-weight partition test 0 (1 partition) completed\n");
-					printf("Resulting error value: %g\n", errorval);
-				}
-			#endif
-
 			if (errorval < best_errorval_in_mode)
 				best_errorval_in_mode = errorval;
 
 			if (errorval < error_of_best_block)
 			{
-				#ifdef DEBUG_PRINT_DIAGNOSTICS
-					if (print_diagnostics)
-						printf("Accepted as better than previous-best-error, which was %g\n", error_of_best_block);
-				#endif
-
 				error_of_best_block = errorval;
 				*scb = tempblocks[j];
 
 				// modesel = 0;
 			}
 
-			#ifdef DEBUG_PRINT_DIAGNOSTICS
-				if (print_diagnostics)
-				{
-					printf("-----------------------------------\n");
-				}
-			#endif
 		}
 
 		best_errorvals_in_modes[0] = best_errorval_in_mode;
@@ -1586,37 +1502,16 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 			float errorval = compute_imageblock_difference(xdim, ydim, zdim,
 														   blk, temp, ewb);
 
-			#ifdef DEBUG_PRINT_DIAGNOSTICS
-				if (print_diagnostics)
-				{
-					printf("\n-----------------------------------\n");
-					printf("Dual-weight partition test %d (1 partition) completed\n", i);
-					printf("Resulting error value: %g\n", errorval);
-				}
-			#endif
-
 			if (errorval < best_errorval_in_mode)
 				best_errorval_in_mode = errorval;
 
 			if (errorval < error_of_best_block)
 			{
-				#ifdef DEBUG_PRINT_DIAGNOSTICS
-					if (print_diagnostics)
-						printf("Accepted as better than previous-best-error, which was %g\n", error_of_best_block);
-				#endif
-
 				error_of_best_block = errorval;
 				*scb = tempblocks[j];
 
 				// modesel = i+1;
 			}
-
-			#ifdef DEBUG_PRINT_DIAGNOSTICS
-				if (print_diagnostics)
-				{
-					printf("-----------------------------------\n");
-				}
-			#endif
 
 			best_errorvals_in_modes[i + 1] = best_errorval_in_mode;
 		}
@@ -1649,25 +1544,11 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 				float errorval = compute_imageblock_difference(xdim, ydim, zdim,
 															   blk, temp, ewb);
 
-				#ifdef DEBUG_PRINT_DIAGNOSTICS
-					if (print_diagnostics)
-					{
-						printf("\n-----------------------------------\n");
-						printf("Single-weight partition test %d (%d partitions) completed\n", i, partition_count);
-						printf("Resulting error value: %g\n", errorval);
-					}
-				#endif
-
 				if (errorval < best_errorval_in_mode)
 					best_errorval_in_mode = errorval;
 
 				if (errorval < error_of_best_block)
 				{
-					#ifdef DEBUG_PRINT_DIAGNOSTICS
-						if (print_diagnostics)
-							printf("Accepted as better than previous-best-error, which was %g\n", error_of_best_block);
-					#endif
-
 					error_of_best_block = errorval;
 					*scb = tempblocks[j];
 
@@ -1676,13 +1557,6 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 			}
 
 			best_errorvals_in_modes[4 * (partition_count - 2) + 5] = best_errorval_in_mode;
-
-			#ifdef DEBUG_PRINT_DIAGNOSTICS
-				if (print_diagnostics)
-				{
-					printf("-----------------------------------\n");
-				}
-			#endif
 
 			if ((error_of_best_block / error_weight_sum) < ewp->texel_avg_error_limit)
 				goto END_OF_TESTS;
@@ -1718,25 +1592,11 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 				float errorval = compute_imageblock_difference(xdim, ydim, zdim,
 															   blk, temp, ewb);
 
-				#ifdef DEBUG_PRINT_DIAGNOSTICS
-					if (print_diagnostics)
-					{
-						printf("\n-----------------------------------\n");
-						printf("Dual-weight partition test %d (%d partitions) completed\n", i, partition_count);
-						printf("Resulting error value: %g\n", errorval);
-					}
-				#endif
-
 				if (errorval < best_errorval_in_mode)
 					best_errorval_in_mode = errorval;
 
 				if (errorval < error_of_best_block)
 				{
-					#ifdef DEBUG_PRINT_DIAGNOSTICS
-						if (print_diagnostics)
-							printf("Accepted as better than previous-best-error, which was %g\n", error_of_best_block);
-					#endif
-
 					error_of_best_block = errorval;
 					*scb = tempblocks[j];
 
@@ -1746,13 +1606,6 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 
 			best_errorvals_in_modes[4 * (partition_count - 2) + 5 + 2] = best_errorval_in_mode;
 
-			#ifdef DEBUG_PRINT_DIAGNOSTICS
-				if (print_diagnostics)
-				{
-					printf("-----------------------------------\n");
-				}
-			#endif
-
 			if ((error_of_best_block / error_weight_sum) < ewp->texel_avg_error_limit)
 				goto END_OF_TESTS;
 		}
@@ -1760,19 +1613,6 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 
   END_OF_TESTS:
 
-	#if 0
-		if (print_statistics)
-		{
-			for (i = 0; i < 13; i++)
-				printf("%f ", best_errorvals_in_modes[i]);
-	
-			printf("%d  %f  %f  %f ", modesel, error_of_best_block,
-				MIN(best_errorvals_in_modes[1], best_errorvals_in_modes[2]) / best_errorvals_in_modes[0],
-				MIN(MIN(best_errorvals_in_modes[7], best_errorvals_in_modes[8]), best_errorvals_in_modes[9]) / best_errorvals_in_modes[0]);
-	
-			printf("\n");
-		}
-	#endif
 
 	if (scb->block_mode >= 0)
 		block_mode_histogram[scb->block_mode & 0x7ff]++;
@@ -1781,10 +1621,6 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 	// compress/decompress to a physical block
 	physical_compressed_block psb = symbolic_to_physical(xdim, ydim, zdim, scb);
 	physical_to_symbolic(xdim, ydim, zdim, psb, scb);
-
-
-	if (print_tile_errors)
-		printf("%g\n", error_of_best_block);
 
 
 	// mean squared error per color component.

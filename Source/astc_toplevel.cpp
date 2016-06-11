@@ -2107,7 +2107,8 @@ int main(int argc, char **argv)
 			#ifdef DEBUG_PRINT_DIAGNOSTICS
 				diagnostics_tile = atoi(argv[argidx - 1]);
 			#else
-				printf("-diag switch given, but codec has been compiled without\n" "DEBUG_PRINT_DIAGNOSTICS enabled; please recompile.\n");
+				//printf("-diag switch given, but codec has been compiled without\n" "DEBUG_PRINT_DIAGNOSTICS enabled; please recompile.\n");
+				printf("-diag switch is unsupported in this version.\n");
 				exit(1);
 			#endif
 		}

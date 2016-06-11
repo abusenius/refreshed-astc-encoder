@@ -39,10 +39,7 @@
 
 #include <math.h>
 #include "astc_codec_internals.h"
-
-#ifdef DEBUG_PRINT_DIAGNOSTICS
-	#include <stdio.h>
-#endif
+#include <stdio.h>
 
 static const float angular_steppings[] = {
 	1.0, 1.125,
