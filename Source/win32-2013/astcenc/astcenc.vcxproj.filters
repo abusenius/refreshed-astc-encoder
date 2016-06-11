@@ -98,6 +98,9 @@
     <ClInclude Include="..\..\astc_codec_internals.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+	<ClInclude Include="..\..\astc_codec_batch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\mathlib.h">
       <Filter>Header Files</Filter>
     </ClInclude>

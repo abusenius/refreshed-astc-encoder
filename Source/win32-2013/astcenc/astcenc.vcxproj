@@ -182,6 +182,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\astc_codec_internals.h" />
+	<ClInclude Include="..\..\astc_codec_batch.h" />
     <ClInclude Include="..\..\mathlib.h" />
     <ClInclude Include="..\..\softfloat.h" />
     <ClInclude Include="stdint.h" />

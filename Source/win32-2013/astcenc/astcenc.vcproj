@@ -287,6 +287,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\astc_codec_batch.h"
+				>
+			</File>
+			<File
 				RelativePath="..\..\mathlib.h"
 				>
 			</File>
