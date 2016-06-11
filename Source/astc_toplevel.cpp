@@ -17,6 +17,7 @@
 /*----------------------------------------------------------------------------*/ 
 
 #include "astc_codec_internals.h"
+#include "astc_codec_batch.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -289,6 +290,7 @@ struct encode_astc_image_info
 	int pack_and_unpack;
 	int thread_id;
 	int threadcount;
+	int batch_size;
 	astc_decode_mode decode_mode;
 	swizzlepattern swz_encode;
 	swizzlepattern swz_decode;
@@ -305,10 +307,11 @@ void *encode_astc_image_threadfunc(void *vblk)
 	int xdim = blk->xdim;
 	int ydim = blk->ydim;
 	int zdim = blk->zdim;
-	uint8_t *buffer = blk->buffer;
+	physical_compressed_block *physical_blocks = (physical_compressed_block*)blk->buffer;
 	const error_weighting_params *ewp = blk->ewp;
 	int thread_id = blk->thread_id;
 	int threadcount = blk->threadcount;
+	int batchsize = blk->batch_size;
 	int *counters = blk->counters;
 	int pack_and_unpack = blk->pack_and_unpack;
 	astc_decode_mode decode_mode = blk->decode_mode;
@@ -318,8 +321,9 @@ void *encode_astc_image_threadfunc(void *vblk)
 	const astc_codec_image *input_image = blk->input_image;
 	astc_codec_image *output_image = blk->output_image;
 
-	imageblock pb;
-	int ctr = thread_id;
+	imageblock *pb_batch = new imageblock[batchsize];
+	symbolic_compressed_block *scb_batch = new symbolic_compressed_block[batchsize];
+	int ctr = thread_id * batchsize;
 	int pctr = 0;
 
 	int x, y, z, i;
@@ -329,25 +333,13 @@ void *encode_astc_image_threadfunc(void *vblk)
 	int xblocks = (xsize + xdim - 1) / xdim;
 	int yblocks = (ysize + ydim - 1) / ydim;
 	int zblocks = (zsize + zdim - 1) / zdim;
+	int total_blocks = xblocks * yblocks * zblocks;
 
 	int owns_progress_counter = 0;
 
-	//allocate memory for temporary buffers
-	compress_symbolic_block_buffers temp_buffers;
-	temp_buffers.ewb = new error_weight_block;
-	temp_buffers.ewbo = new error_weight_block_orig;
-	temp_buffers.tempblocks = new symbolic_compressed_block[4];
-	temp_buffers.temp = new imageblock;
-	temp_buffers.planes2 = new compress_fixed_partition_buffers;
-	temp_buffers.planes2->ei1 = new endpoints_and_weights;
-	temp_buffers.planes2->ei2 = new endpoints_and_weights;
-	temp_buffers.planes2->eix1 = new endpoints_and_weights[MAX_DECIMATION_MODES];
-	temp_buffers.planes2->eix2 = new endpoints_and_weights[MAX_DECIMATION_MODES];
-	temp_buffers.planes2->decimated_quantized_weights = new float[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK];
-	temp_buffers.planes2->decimated_weights = new float[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK];
-	temp_buffers.planes2->flt_quantized_decimated_quantized_weights = new float[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK];
-	temp_buffers.planes2->u8_quantized_decimated_quantized_weights = new uint8_t[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK];
-	temp_buffers.plane1 = temp_buffers.planes2;
+	SymbolicBatchCompressor symbolic_compressor(batchsize, xdim, ydim, zdim, decode_mode, ewp);
+
+#define NEXT_BLOCK_IN_BATCH(dx, dy, dz) if (++dx >= xblocks){ dx = 0; if (++dy >= yblocks){ dy = 0; dz++; }	}
 
 	for (z = 0; z < zblocks; z++)
 		for (y = 0; y < yblocks; y++)
@@ -355,33 +347,43 @@ void *encode_astc_image_threadfunc(void *vblk)
 			{
 				if (ctr == 0)
 				{
-					int offset = ((z * yblocks + y) * xblocks + x) * 16;
-					uint8_t *bp = buffer + offset;
+					int cur_block = (z * yblocks + y) * xblocks + x;
+					int cur_batch_size = min(batchsize, total_blocks - cur_block);
+					int dx, dy, dz;
 				#ifdef DEBUG_PRINT_DIAGNOSTICS
 					if (diagnostics_tile < 0 || diagnostics_tile == pctr)
 					{
 						print_diagnostics = (diagnostics_tile == pctr) ? 1 : 0;
 				#endif
-						fetch_imageblock(input_image, &pb, xdim, ydim, zdim, x * xdim, y * ydim, z * zdim, swz_encode);
-						symbolic_compressed_block scb;
-						compress_symbolic_block(input_image, decode_mode, xdim, ydim, zdim, ewp, &pb, &scb, &temp_buffers);
-						if (pack_and_unpack)
+						dx = x; dy = y; dz = z;
+						for (int block_in_batch = 0; block_in_batch < cur_batch_size; block_in_batch++)
 						{
-							decompress_symbolic_block(decode_mode, xdim, ydim, zdim, x * xdim, y * ydim, z * zdim, &scb, &pb);
-							write_imageblock(output_image, &pb, xdim, ydim, zdim, x * xdim, y * ydim, z * zdim, swz_decode);
+							fetch_imageblock(input_image, &pb_batch[block_in_batch], xdim, ydim, zdim, dx * xdim, dy * ydim, dz * zdim, swz_encode);
+							NEXT_BLOCK_IN_BATCH(dx, dy, dz);
 						}
-						else
-						{
-							physical_compressed_block pcb;
-							pcb = symbolic_to_physical(xdim, ydim, zdim, &scb);
-							*(physical_compressed_block *) bp = pcb;
+
+						symbolic_compressor.compress_symbolic_batch(input_image, pb_batch, scb_batch, cur_batch_size);
+
+						dx = x; dy = y; dz = z;
+						for (int block_in_batch = 0; block_in_batch < cur_batch_size; block_in_batch++) {
+							if (pack_and_unpack)
+							{
+								decompress_symbolic_block(decode_mode, xdim, ydim, zdim, dx * xdim, dy * ydim, dz * zdim, &scb_batch[block_in_batch], &pb_batch[block_in_batch]);
+								write_imageblock(output_image, &pb_batch[block_in_batch], xdim, ydim, zdim, dx * xdim, dy * ydim, dz * zdim, swz_decode);
+							}
+							else
+							{
+								physical_blocks[cur_block + block_in_batch] = symbolic_to_physical(xdim, ydim, zdim, &scb_batch[block_in_batch]);
+							}
+							NEXT_BLOCK_IN_BATCH(dx, dy, dz);
 						}
+						
 				#ifdef DEBUG_PRINT_DIAGNOSTICS
 					}
 				#endif
 
-					counters[thread_id]++;
-					ctr = threadcount - 1;
+					counters[thread_id] += cur_batch_size;
+					ctr = threadcount * batchsize - 1;
 
 					pctr++;
 
@@ -419,31 +421,18 @@ void *encode_astc_image_threadfunc(void *vblk)
 					ctr--;
 			}
 
-	delete[] temp_buffers.planes2->decimated_quantized_weights;
-	delete[] temp_buffers.planes2->decimated_weights;
-	delete[] temp_buffers.planes2->flt_quantized_decimated_quantized_weights;
-	delete[] temp_buffers.planes2->u8_quantized_decimated_quantized_weights;
-	delete[] temp_buffers.planes2->eix1;
-	delete[] temp_buffers.planes2->eix2;
-	delete   temp_buffers.planes2->ei1;
-	delete   temp_buffers.planes2->ei2;
-	delete   temp_buffers.planes2;
-	delete[] temp_buffers.tempblocks;
-	delete   temp_buffers.temp;
-	delete   temp_buffers.ewbo;
-	delete   temp_buffers.ewb;
+	delete[] scb_batch;
+	delete[] pb_batch;
 	
 	threads_completed[thread_id] = 1;
 	return NULL;
 }
 
 
-void encode_astc_image(const astc_codec_image * input_image,
-					   astc_codec_image * output_image,
-					   int xdim,
-					   int ydim,
-					   int zdim,
-					   const error_weighting_params * ewp, astc_decode_mode decode_mode, swizzlepattern swz_encode, swizzlepattern swz_decode, uint8_t * buffer, int pack_and_unpack, int threadcount)
+void encode_astc_image(const astc_codec_image * input_image, astc_codec_image * output_image,
+					   int xdim, int ydim, int zdim,
+					   const error_weighting_params * ewp, astc_decode_mode decode_mode, swizzlepattern swz_encode, swizzlepattern swz_decode,
+					   uint8_t * buffer, int pack_and_unpack, int threadcount, int batch_size)
 {
 	int i;
 	int *counters = new int[threadcount];
@@ -466,6 +455,7 @@ void encode_astc_image(const astc_codec_image * input_image,
 		ai[i].pack_and_unpack = pack_and_unpack;
 		ai[i].thread_id = i;
 		ai[i].threadcount = threadcount;
+		ai[i].batch_size = batch_size;
 		ai[i].decode_mode = decode_mode;
 		ai[i].swz_encode = swz_encode;
 		ai[i].swz_decode = swz_decode;
@@ -496,7 +486,7 @@ void encode_astc_image(const astc_codec_image * input_image,
 
 
 void store_astc_file(const astc_codec_image * input_image,
-					 const char *filename, int xdim, int ydim, int zdim, const error_weighting_params * ewp, astc_decode_mode decode_mode, swizzlepattern swz_encode, int threadcount)
+					 const char *filename, int xdim, int ydim, int zdim, const error_weighting_params * ewp, astc_decode_mode decode_mode, swizzlepattern swz_encode, int threadcount, int batch_size)
 {
 	int xsize = input_image->xsize;
 	int ysize = input_image->ysize;
@@ -516,7 +506,7 @@ void store_astc_file(const astc_codec_image * input_image,
 	if (!suppress_progress_counter)
 		printf("%d blocks to process ..\n", xblocks * yblocks * zblocks);
 
-	encode_astc_image(input_image, NULL, xdim, ydim, zdim, ewp, decode_mode, swz_encode, swz_encode, buffer, 0, threadcount);
+	encode_astc_image(input_image, NULL, xdim, ydim, zdim, ewp, decode_mode, swz_encode, swz_encode, buffer, 0, threadcount, batch_size);
 
 	end_coding_time = get_time();
 
@@ -551,7 +541,7 @@ astc_codec_image *pack_and_unpack_astc_image(const astc_codec_image * input_imag
 											 int xdim,
 											 int ydim,
 											 int zdim,
-											 const error_weighting_params * ewp, astc_decode_mode decode_mode, swizzlepattern swz_encode, swizzlepattern swz_decode, int bitness, int threadcount)
+											 const error_weighting_params * ewp, astc_decode_mode decode_mode, swizzlepattern swz_encode, swizzlepattern swz_decode, int bitness, int threadcount, int batch_size)
 {
 	int xsize = input_image->xsize;
 	int ysize = input_image->ysize;
@@ -569,7 +559,7 @@ astc_codec_image *pack_and_unpack_astc_image(const astc_codec_image * input_imag
 	if (!suppress_progress_counter)
 		printf("%d blocks to process...\n", xblocks * yblocks * zblocks);
 
-	encode_astc_image(input_image, img, xdim, ydim, zdim, ewp, decode_mode, swz_encode, swz_decode, NULL, 1, threadcount);
+	encode_astc_image(input_image, img, xdim, ydim, zdim, ewp, decode_mode, swz_encode, swz_decode, NULL, 1, threadcount, batch_size);
 
 	if (!suppress_progress_counter)
 		printf("\n");
@@ -1169,6 +1159,10 @@ int main(int argc, char **argv)
 				"     The mPSNR error metric only applies to HDR textures.\n"
 				"     This option can be used together with -compare .\n"
 				"\n"
+				" -batchsize <blocks>\n"
+				"     Set how many blocks each encoding thread will process at a time.\n"
+				"     Default is 128 blocks.\n"
+				"\n"
 				"\n"
 				"\n"
 				"Tips & tricks:\n"
@@ -1344,6 +1338,7 @@ int main(int argc, char **argv)
 	int low_fstop = -10;
 	int high_fstop = 10;
 
+	int batch_size = 128;
 
 	// parse the commandline's encoding options.
 	int argidx;
@@ -2064,6 +2059,16 @@ int main(int argc, char **argv)
 			}
 			thread_count = atoi(argv[argidx - 1]);
 		}
+		else if (!strcmp(argv[argidx], "-batchsize"))
+		{
+			argidx += 2;
+			if (argidx > argc)
+			{
+				printf("-batchsize switch with no argument\n");
+				exit(1);
+			}
+			batch_size = atoi(argv[argidx - 1]);
+		}
 
 		else if (!strcmp(argv[argidx], "-srgb"))
 		{
@@ -2178,7 +2183,7 @@ int main(int argc, char **argv)
 			exit(1);
 		}
 
-		progress_counter_divider = pcdiv;
+		progress_counter_divider = max(1, pcdiv/batch_size);
 
 		int partitions_to_test = plimit_set_by_user ? plimit_user_specified : plimit_autoset;
 		float dblimit_2d = dblimit_set_by_user ? dblimit_user_specified : dblimit_autoset_2d;
@@ -2465,7 +2470,7 @@ int main(int argc, char **argv)
 
 	// process image, if relevant
 	if (opmode == 2)
-		output_image = pack_and_unpack_astc_image(input_image, xdim, ydim, zdim, &ewp, decode_mode, swz_encode, swz_decode, bitness, thread_count);
+		output_image = pack_and_unpack_astc_image(input_image, xdim, ydim, zdim, &ewp, decode_mode, swz_encode, swz_decode, bitness, thread_count, batch_size);
 
 
 	end_coding_time = get_time();
@@ -2504,7 +2509,7 @@ int main(int argc, char **argv)
 	}
 	if (opmode == 0)
 	{
-		store_astc_file(input_image, output_filename, xdim, ydim, zdim, &ewp, decode_mode, swz_encode, thread_count);
+		store_astc_file(input_image, output_filename, xdim, ydim, zdim, &ewp, decode_mode, swz_encode, thread_count, batch_size);
 	}
 
 

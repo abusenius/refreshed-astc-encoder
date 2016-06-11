@@ -14,6 +14,7 @@
 /*----------------------------------------------------------------------------*/ 
 
 #include "astc_codec_internals.h"
+#include "astc_codec_batch.h"
 
 #include "softfloat.h"
 #include <math.h>
@@ -1788,4 +1789,59 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 
 	// mean squared error per color component.
 	return error_of_best_block / ((float)xdim * ydim * zdim);
+}
+
+SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size)
+	: max_batch_size(_max_batch_size), xdim(4), ydim(4), zdim(1), decode_mode(astc_decode_mode::DECODE_LDR)
+{
+	allocate_buffers(max_batch_size);
+}
+
+SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim, int _ydim, int _zdim, astc_decode_mode _decode_mode, const error_weighting_params * _ewp)
+	: max_batch_size(_max_batch_size), xdim(_xdim), ydim(_ydim), zdim(_zdim), decode_mode(_decode_mode)
+{
+	ewp = *_ewp;
+	allocate_buffers(max_batch_size);
+}
+
+void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * input_image, const imageblock * blk, symbolic_compressed_block * scb, int batch_size)
+{
+	for (int block_in_batch = 0; block_in_batch < batch_size; block_in_batch++)
+	{
+		compress_symbolic_block(input_image, decode_mode, xdim, ydim, zdim, &ewp, &blk[block_in_batch], &scb[block_in_batch], &tmpbuf);
+	}
+}
+
+SymbolicBatchCompressor::~SymbolicBatchCompressor()
+{
+	delete[] tmpplanes.u8_quantized_decimated_quantized_weights;
+	delete[] tmpplanes.flt_quantized_decimated_quantized_weights;
+	delete[] tmpplanes.decimated_weights;
+	delete[] tmpplanes.decimated_quantized_weights;
+	delete[] tmpplanes.eix2;
+	delete[] tmpplanes.eix1;
+	delete tmpplanes.ei2;
+	delete tmpplanes.ei1;
+	delete tmpbuf.temp;
+	delete[] tmpbuf.tempblocks;
+	delete tmpbuf.ewbo;
+	delete tmpbuf.ewb;
+}
+
+void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
+{
+	tmpbuf.ewb = new error_weight_block;
+	tmpbuf.ewbo = new error_weight_block_orig;
+	tmpbuf.tempblocks = new symbolic_compressed_block[4];
+	tmpbuf.temp = new imageblock;
+	tmpplanes.ei1 = new endpoints_and_weights;
+	tmpplanes.ei2 = new endpoints_and_weights;
+	tmpplanes.eix1 = new endpoints_and_weights[MAX_DECIMATION_MODES];
+	tmpplanes.eix2 = new endpoints_and_weights[MAX_DECIMATION_MODES];
+	tmpplanes.decimated_quantized_weights = new float[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK];
+	tmpplanes.decimated_weights = new float[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK];
+	tmpplanes.flt_quantized_decimated_quantized_weights = new float[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK];
+	tmpplanes.u8_quantized_decimated_quantized_weights = new uint8_t[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK];
+	tmpbuf.plane1 = &tmpplanes;
+	tmpbuf.planes2 = &tmpplanes;
 }
