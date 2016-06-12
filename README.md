@@ -1,6 +1,20 @@
 # About
 
-This is the official repository of the evaluation codec for the Adaptive Scalable Texture Compression (ASTC) standard.
+This is the fork of official repository of the evaluation codec for the Adaptive Scalable Texture Compression (ASTC) standard.
+
+The goal is to accelerate encoding while preserving compatibility with original tool and [Mali GPU Texture Compression Tool](http://malideveloper.arm.com/resources/tools/mali-gpu-texture-compression-tool/). So you can just replace astcenc binary in bin directory of Mali TCT with refreshed one and get performance boost and some quality improvement.
+
+Refreshed ASTC encoder is about 2x faster than the Mali TCT binary and about 1.5x faster than the one from official repo. Here are results for compressing turret_diffuse_map.png on Intel Core i5 760:
+
+| Preset | MaliTCT (32-bit) | astcenc (64-bit) | refreshed astcenc (64-bit)|
+| ---    | ---              | ---              | --- |
+| veryfast |    0.41 sec |  0.39 sec |  0.19 sec |
+| fast |        1.04 sec |  0.86 sec |  0.40 sec |
+| medium |      6.11 sec |  4.36 sec |  3.20 sec |
+| thorough |   22.90 sec | 14.98 sec | 11.54 sec |
+| exhaustive | 52.56 sec | 30.99 sec | 25.23 sec |
+
+# Original Readme
 
 ASTC technology developed by ARM® and AMD has been adopted as an official extension to both the Open GL® and OpenGL ES graphics APIs. ASTC is a major step forward in terms of image quality, reducing memory bandwidth and thus energy use.
 
