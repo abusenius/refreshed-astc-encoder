@@ -1531,7 +1531,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 			{
 				compress_symbolic_block_fixed_partition_1_plane(decode_mode, mode_cutoff, ewp.max_refinement_iters, xdim, ydim, zdim, partition_count, partition_indices_1plane[i], blk, ewb, scb_candidates, &tmpplanes);
 
-				FIND_BEST_SCB_CANDIDATES(4 * (partition_count - 2) + 5);
+				FIND_BEST_SCB_CANDIDATES(4 * (partition_count - 2) + 5 + i);
 			}
 
 
@@ -1554,7 +1554,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 					partition_indices_2planes[i] & (PARTITION_COUNT - 1), partition_indices_2planes[i] >> PARTITION_BITS,
 					blk, ewb, scb_candidates, &tmpplanes);
 
-				FIND_BEST_SCB_CANDIDATES(4 * (partition_count - 2) + 5 + 2);
+				FIND_BEST_SCB_CANDIDATES(4 * (partition_count - 2) + 5 + 2 + i);
 			}
 		}
 
