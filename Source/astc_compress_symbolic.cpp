@@ -846,7 +846,7 @@ void expand_block_artifact_suppression(int xdim, int ydim, int zdim, error_weigh
 // Returns the sum of all the error values set.
 
 float prepare_error_weight_block(const astc_codec_image * input_image,
-								 int xdim, int ydim, int zdim, const error_weighting_params * ewp, const imageblock * blk, error_weight_block * ewb, error_weight_block_orig * ewbo)
+								 int xdim, int ydim, int zdim, const error_weighting_params * ewp, const imageblock * blk, error_weight_block * ewb)
 {
 
 	int x, y, z;
@@ -984,8 +984,6 @@ float prepare_error_weight_block(const astc_codec_image * input_image,
 					// error weights by the derivative of the inverse of the transfer function,
 					// which is equivalent to dividing by the derivative of the transfer
 					// function.
-
-					ewbo->error_weights[idx] = error_weight;
 
 					error_weight.x /= (blk->deriv_data[4 * idx] * blk->deriv_data[4 * idx] * 1e-10f);
 					error_weight.y /= (blk->deriv_data[4 * idx + 1] * blk->deriv_data[4 * idx + 1] * 1e-10f);
@@ -1312,8 +1310,6 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 	int ypos = blk->ypos;
 	int zpos = blk->zpos;
 
-	int x, y, z;
-
 
 	if (blk->red_min == blk->red_max && blk->green_min == blk->green_max && blk->blue_min == blk->blue_max && blk->alpha_min == blk->alpha_max)
 	{
@@ -1368,11 +1364,10 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 	}
 
 	error_weight_block *ewb = tmpbuf->ewb;
-	error_weight_block_orig *ewbo = tmpbuf->ewbo;
 
 	float error_weight_sum = prepare_error_weight_block(input_image,
 														xdim, ydim, zdim,
-														ewp, blk, ewb, ewbo);
+														ewp, blk, ewb);
 
 
 	symbolic_compressed_block *tempblocks = tmpbuf->tempblocks;
@@ -1402,22 +1397,10 @@ float compress_symbolic_block(const astc_codec_image * input_image,
 
 	if (avgblock_errorval < error_of_best_block)
 	{
-		#ifdef DEBUG_PRINT_DIAGNOSTICS
-			if (print_diagnostics)
-				printf("Accepted as better than previous-best-error, which was %g\n", error_of_best_block);
-		#endif
-
 		error_of_best_block = avgblock_errorval;
 		// *scb = tempblocks[j];
 		modesel = 0;
 	}
-
-	#ifdef DEBUG_PRINT_DIAGNOSTICS
-		if (print_diagnostics)
-		{
-			printf("-----------------------------------\n");
-		}
-	#endif
 
 	if ((error_of_best_block / error_weight_sum) < ewp->texel_avg_error_limit)
 		goto END_OF_TESTS;
@@ -1660,14 +1643,12 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 	delete tmpplanes.ei1;
 	delete tmpbuf.temp;
 	delete[] tmpbuf.tempblocks;
-	delete tmpbuf.ewbo;
 	delete tmpbuf.ewb;
 }
 
 void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 {
 	tmpbuf.ewb = new error_weight_block;
-	tmpbuf.ewbo = new error_weight_block_orig;
 	tmpbuf.tempblocks = new symbolic_compressed_block[4];
 	tmpbuf.temp = new imageblock;
 	tmpplanes.ei1 = new endpoints_and_weights;

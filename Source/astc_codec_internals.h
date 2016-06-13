@@ -292,12 +292,6 @@ struct error_weight_block
 
 
 
-struct error_weight_block_orig
-{
-	float4 error_weights[MAX_TEXELS_PER_BLOCK];
-};
-
-
 // enumeration of all the quantization methods we support under this format.  
 enum quantization_method
 {
@@ -738,7 +732,7 @@ void expand_block_artifact_suppression(int xdim, int ydim, int zdim, error_weigh
 // Returns the sum of all the error values set.
 float prepare_error_weight_block(const astc_codec_image * input_image,
 								 // dimensions of error weight block.
-								 int xdim, int ydim, int zdim, const error_weighting_params * ewp, const imageblock * blk, error_weight_block * ewb, error_weight_block_orig * ewbo);
+								 int xdim, int ydim, int zdim, const error_weighting_params * ewp, const imageblock * blk, error_weight_block * ewb);
 
 
 // functions pertaining to weight alignment
