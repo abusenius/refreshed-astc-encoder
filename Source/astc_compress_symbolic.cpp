@@ -1299,317 +1299,6 @@ void compress_constant_color_block(int xdim, int ydim, int zdim, const imagebloc
 	}
 }
 
-int block_mode_histogram[2048];
-
-float compress_symbolic_block(const astc_codec_image * input_image,
-							  astc_decode_mode decode_mode, int xdim, int ydim, int zdim, const error_weighting_params * ewp, const imageblock * blk, symbolic_compressed_block * scb,
-							  compress_symbolic_block_buffers * tmpbuf)
-{
-	int i, j;
-	int xpos = blk->xpos;
-	int ypos = blk->ypos;
-	int zpos = blk->zpos;
-
-
-	if (blk->red_min == blk->red_max && blk->green_min == blk->green_max && blk->blue_min == blk->blue_max && blk->alpha_min == blk->alpha_max)
-	{
-
-		// detected a constant-color block. Encode as FP16 if using HDR
-		scb->error_block = 0;
-
-		if (rgb_force_use_of_hdr)
-		{
-			scb->block_mode = -1;
-			scb->partition_count = 0;
-			scb->constant_color[0] = float_to_sf16(blk->orig_data[0], SF_NEARESTEVEN);
-			scb->constant_color[1] = float_to_sf16(blk->orig_data[1], SF_NEARESTEVEN);
-			scb->constant_color[2] = float_to_sf16(blk->orig_data[2], SF_NEARESTEVEN);
-			scb->constant_color[3] = float_to_sf16(blk->orig_data[3], SF_NEARESTEVEN);
-		}
-		else
-		{
-			// Encode as UNORM16 if NOT using HDR.
-			scb->block_mode = -2;
-			scb->partition_count = 0;
-			float red = blk->orig_data[0];
-			float green = blk->orig_data[1];
-			float blue = blk->orig_data[2];
-			float alpha = blk->orig_data[3];
-			if (red < 0)
-				red = 0;
-			else if (red > 1)
-				red = 1;
-			if (green < 0)
-				green = 0;
-			else if (green > 1)
-				green = 1;
-			if (blue < 0)
-				blue = 0;
-			else if (blue > 1)
-				blue = 1;
-			if (alpha < 0)
-				alpha = 0;
-			else if (alpha > 1)
-				alpha = 1;
-			scb->constant_color[0] = (int)floor(red * 65535.0f + 0.5f);
-			scb->constant_color[1] = (int)floor(green * 65535.0f + 0.5f);
-			scb->constant_color[2] = (int)floor(blue * 65535.0f + 0.5f);
-			scb->constant_color[3] = (int)floor(alpha * 65535.0f + 0.5f);
-		}
-
-		physical_compressed_block psb = symbolic_to_physical(xdim, ydim, zdim, scb);
-		physical_to_symbolic(xdim, ydim, zdim, psb, scb);
-
-		return 0.0f;
-	}
-
-	error_weight_block *ewb = tmpbuf->ewb;
-
-	float error_weight_sum = prepare_error_weight_block(input_image,
-														xdim, ydim, zdim,
-														ewp, blk, ewb);
-
-
-	symbolic_compressed_block *tempblocks = tmpbuf->tempblocks;
-
-	float error_of_best_block = 1e20f;
-	// int modesel=0;
-
-	imageblock *temp = tmpbuf->temp;
-
-	float best_errorvals_in_modes[17];
-	for (i = 0; i < 17; i++)
-		best_errorvals_in_modes[i] = 1e30f;
-
-	int uses_alpha = imageblock_uses_alpha(xdim, ydim, zdim, blk);
-
-
-	// compression of average-color blocks disabled for the time being;
-	// they produce extremely severe block artifacts.
-#if 0
-	// first, compress an averaged-color block
-	compress_constant_color_block(xdim, ydim, zdim, blk, ewb, scb);
-
-	decompress_symbolic_block(decode_mode, xdim, ydim, zdim, xpos, ypos, zpos, scb, temp);
-
-	float avgblock_errorval = compute_imageblock_difference(xdim, ydim, zdim,
-															blk, temp, ewb) * 4.0f;	// bias somewhat against the average-color block.
-
-	if (avgblock_errorval < error_of_best_block)
-	{
-		error_of_best_block = avgblock_errorval;
-		// *scb = tempblocks[j];
-		modesel = 0;
-	}
-
-	if ((error_of_best_block / error_weight_sum) < ewp->texel_avg_error_limit)
-		goto END_OF_TESTS;
-#endif
-
-
-	float mode_cutoff = ewp->block_mode_cutoff;
-
-	// next, test mode #0. This mode uses 1 plane of weights and 1 partition.
-	// we test it twice, first with a modecutoff of 0, then with the specified mode-cutoff.
-	// This causes an early-out that speeds up encoding of "easy" content.
-
-	float modecutoffs[2];
-	float errorval_mult[2] = { 2.5, 1 };
-	modecutoffs[0] = 0;
-	modecutoffs[1] = mode_cutoff;
-
-	float best_errorval_in_mode;
-	for (i = 0; i < 2; i++)
-	{
-		compress_symbolic_block_fixed_partition_1_plane(decode_mode, modecutoffs[i], ewp->max_refinement_iters, xdim, ydim, zdim, 1,	// partition count
-														0,	// partition index
-														blk, ewb, tempblocks, tmpbuf->plane1);
-
-		best_errorval_in_mode = 1e30f;
-		for (j = 0; j < 4; j++)
-		{
-			if (tempblocks[j].error_block)
-				continue;
-			decompress_symbolic_block(decode_mode, xdim, ydim, zdim, xpos, ypos, zpos, tempblocks + j, temp);
-			float errorval = compute_imageblock_difference(xdim, ydim, zdim,
-														   blk, temp, ewb) * errorval_mult[i];
-
-			if (errorval < best_errorval_in_mode)
-				best_errorval_in_mode = errorval;
-
-			if (errorval < error_of_best_block)
-			{
-				error_of_best_block = errorval;
-				*scb = tempblocks[j];
-
-				// modesel = 0;
-			}
-
-		}
-
-		best_errorvals_in_modes[0] = best_errorval_in_mode;
-		if ((error_of_best_block / error_weight_sum) < ewp->texel_avg_error_limit)
-			goto END_OF_TESTS;
-	}
-
-	int is_normal_map;
-	float lowest_correl;
-	prepare_block_statistics(xdim, ydim, zdim, blk, ewb, &is_normal_map, &lowest_correl);
-
-	if (is_normal_map && lowest_correl < 0.99f)
-		lowest_correl = 0.99f;
-
-	// next, test the four possible 1-partition, 2-planes modes
-	for (i = 0; i < 4; i++)
-	{
-
-		if (lowest_correl > ewp->lowest_correlation_cutoff)
-			continue;
-
-		if (blk->grayscale && i != 3)
-			continue;
-
-		if (!uses_alpha && i == 3)
-			continue;
-
-		compress_symbolic_block_fixed_partition_2_planes(decode_mode, mode_cutoff, ewp->max_refinement_iters, xdim, ydim, zdim, 1,	// partition count
-														 0,	// partition index
-														 i,	// the color component to test a separate plane of weights for.
-														 blk, ewb, tempblocks, tmpbuf->planes2);
-
-		for (j = 0; j < 4; j++)
-		{
-			if (tempblocks[j].error_block)
-				continue;
-			decompress_symbolic_block(decode_mode, xdim, ydim, zdim, xpos, ypos, zpos, tempblocks + j, temp);
-			float errorval = compute_imageblock_difference(xdim, ydim, zdim,
-														   blk, temp, ewb);
-
-			if (errorval < best_errorval_in_mode)
-				best_errorval_in_mode = errorval;
-
-			if (errorval < error_of_best_block)
-			{
-				error_of_best_block = errorval;
-				*scb = tempblocks[j];
-
-				// modesel = i+1;
-			}
-
-			best_errorvals_in_modes[i + 1] = best_errorval_in_mode;
-		}
-
-		if ((error_of_best_block / error_weight_sum) < ewp->texel_avg_error_limit)
-			goto END_OF_TESTS;
-	}
-
-	// find best blocks for 2, 3 and 4 partitions
-	int partition_count;
-	for (partition_count = 2; partition_count <= 4; partition_count++)
-	{
-		int partition_indices_1plane[2];
-		int partition_indices_2planes[2];
-
-		find_best_partitionings(ewp->partition_search_limit,
-								xdim, ydim, zdim, partition_count, blk, ewb, 1, 
-								&(partition_indices_1plane[0]), &(partition_indices_1plane[1]), &(partition_indices_2planes[0]));
-
-		for (i = 0; i < 2; i++)
-		{
-			compress_symbolic_block_fixed_partition_1_plane(decode_mode, mode_cutoff, ewp->max_refinement_iters, xdim, ydim, zdim, partition_count, partition_indices_1plane[i], blk, ewb, tempblocks, tmpbuf->plane1);
-
-			best_errorval_in_mode = 1e30f;
-			for (j = 0; j < 4; j++)
-			{
-				if (tempblocks[j].error_block)
-					continue;
-				decompress_symbolic_block(decode_mode, xdim, ydim, zdim, xpos, ypos, zpos, tempblocks + j, temp);
-				float errorval = compute_imageblock_difference(xdim, ydim, zdim,
-															   blk, temp, ewb);
-
-				if (errorval < best_errorval_in_mode)
-					best_errorval_in_mode = errorval;
-
-				if (errorval < error_of_best_block)
-				{
-					error_of_best_block = errorval;
-					*scb = tempblocks[j];
-
-					// modesel = 4*(partition_count-2) + 5;
-				}
-			}
-
-			best_errorvals_in_modes[4 * (partition_count - 2) + 5] = best_errorval_in_mode;
-
-			if ((error_of_best_block / error_weight_sum) < ewp->texel_avg_error_limit)
-				goto END_OF_TESTS;
-		}
-
-
-		if (partition_count == 2 && !is_normal_map && MIN(best_errorvals_in_modes[5], best_errorvals_in_modes[6]) > (best_errorvals_in_modes[0] * ewp->partition_1_to_2_limit))
-			goto END_OF_TESTS;
-
-		// don't bother to check 4 partitions for dual plane of weightss, ever.
-		if (partition_count == 4)
-			break;
-
-		for (i = 0; i < 2; i++)
-		{
-			if (lowest_correl > ewp->lowest_correlation_cutoff)
-				continue;
-			compress_symbolic_block_fixed_partition_2_planes(decode_mode,
-															 mode_cutoff,
-															 ewp->max_refinement_iters,
-															 xdim, ydim, zdim,
-															 partition_count,
-															 partition_indices_2planes[i] & (PARTITION_COUNT - 1), partition_indices_2planes[i] >> PARTITION_BITS,
-															 blk, ewb, tempblocks, tmpbuf->planes2);
-
-			best_errorval_in_mode = 1e30f;
-			for (j = 0; j < 4; j++)
-			{
-				if (tempblocks[j].error_block)
-					continue;
-				decompress_symbolic_block(decode_mode, xdim, ydim, zdim, xpos, ypos, zpos, tempblocks + j, temp);
-
-				float errorval = compute_imageblock_difference(xdim, ydim, zdim,
-															   blk, temp, ewb);
-
-				if (errorval < best_errorval_in_mode)
-					best_errorval_in_mode = errorval;
-
-				if (errorval < error_of_best_block)
-				{
-					error_of_best_block = errorval;
-					*scb = tempblocks[j];
-
-					// modesel = 4*(partition_count-2) + 5 + 2;
-				}
-			}
-
-			best_errorvals_in_modes[4 * (partition_count - 2) + 5 + 2] = best_errorval_in_mode;
-
-			if ((error_of_best_block / error_weight_sum) < ewp->texel_avg_error_limit)
-				goto END_OF_TESTS;
-		}
-	}
-
-  END_OF_TESTS:
-
-
-	if (scb->block_mode >= 0)
-		block_mode_histogram[scb->block_mode & 0x7ff]++;
-
-	
-	// compress/decompress to a physical block
-	physical_compressed_block psb = symbolic_to_physical(xdim, ydim, zdim, scb);
-	physical_to_symbolic(xdim, ydim, zdim, psb, scb);
-
-
-	// mean squared error per color component.
-	return error_of_best_block / ((float)xdim * ydim * zdim);
-}
-
 SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size)
 	: max_batch_size(_max_batch_size), xdim(4), ydim(4), zdim(1), decode_mode(astc_decode_mode::DECODE_LDR)
 {
@@ -1623,11 +1312,262 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 	allocate_buffers(max_batch_size);
 }
 
-void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * input_image, const imageblock * blk, symbolic_compressed_block * scb, int batch_size)
+int block_mode_histogram[2048];
+
+#define FIND_BEST_SCB_CANDIDATES(modesel) {best_errorval_in_mode = 1e30f;\
+		for (j = 0; j < SCB_CANDIDATES; j++)\
+		{\
+			if (scb_candidates[j].error_block)\
+				continue;\
+			decompress_symbolic_block(decode_mode, xdim, ydim, zdim, xpos, ypos, zpos, scb_candidates + j, temp);\
+			float errorval = compute_imageblock_difference(xdim, ydim, zdim, blk, temp, ewb);\
+		\
+			if (errorval < best_errorval_in_mode)\
+				best_errorval_in_mode = errorval;\
+		\
+			if (errorval < error_of_best_block)\
+			{\
+				error_of_best_block = errorval;\
+				*scb = scb_candidates[j];\
+		\
+			}\
+		\
+		}\
+		\
+		best_errorvals_in_modes[(modesel)] = best_errorval_in_mode;\
+		if ((error_of_best_block / error_weight_sum) < ewp.texel_avg_error_limit)\
+			goto END_OF_TESTS;}
+
+void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * input_image, const imageblock * blk_batch, symbolic_compressed_block * scb_batch, int batch_size)
 {
-	for (int block_in_batch = 0; block_in_batch < batch_size; block_in_batch++)
+	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 	{
-		compress_symbolic_block(input_image, decode_mode, xdim, ydim, zdim, &ewp, &blk[block_in_batch], &scb[block_in_batch], &tmpbuf);
+		const imageblock * blk = &blk_batch[blk_idx];
+		symbolic_compressed_block * scb = &scb_batch[blk_idx];
+
+		int i, j;
+		int xpos = blk->xpos;
+		int ypos = blk->ypos;
+		int zpos = blk->zpos;
+
+
+		if (blk->red_min == blk->red_max && blk->green_min == blk->green_max && blk->blue_min == blk->blue_max && blk->alpha_min == blk->alpha_max)
+		{
+
+			// detected a constant-color block. Encode as FP16 if using HDR
+			scb->error_block = 0;
+
+			if (rgb_force_use_of_hdr)
+			{
+				scb->block_mode = -1;
+				scb->partition_count = 0;
+				scb->constant_color[0] = float_to_sf16(blk->orig_data[0], SF_NEARESTEVEN);
+				scb->constant_color[1] = float_to_sf16(blk->orig_data[1], SF_NEARESTEVEN);
+				scb->constant_color[2] = float_to_sf16(blk->orig_data[2], SF_NEARESTEVEN);
+				scb->constant_color[3] = float_to_sf16(blk->orig_data[3], SF_NEARESTEVEN);
+			}
+			else
+			{
+				// Encode as UNORM16 if NOT using HDR.
+				scb->block_mode = -2;
+				scb->partition_count = 0;
+				float red = blk->orig_data[0];
+				float green = blk->orig_data[1];
+				float blue = blk->orig_data[2];
+				float alpha = blk->orig_data[3];
+				if (red < 0)
+					red = 0;
+				else if (red > 1)
+					red = 1;
+				if (green < 0)
+					green = 0;
+				else if (green > 1)
+					green = 1;
+				if (blue < 0)
+					blue = 0;
+				else if (blue > 1)
+					blue = 1;
+				if (alpha < 0)
+					alpha = 0;
+				else if (alpha > 1)
+					alpha = 1;
+				scb->constant_color[0] = (int)floor(red * 65535.0f + 0.5f);
+				scb->constant_color[1] = (int)floor(green * 65535.0f + 0.5f);
+				scb->constant_color[2] = (int)floor(blue * 65535.0f + 0.5f);
+				scb->constant_color[3] = (int)floor(alpha * 65535.0f + 0.5f);
+			}
+
+			goto END_OF_TESTS;
+		}
+
+		error_weight_block *ewb = &ewb_batch[blk_idx];
+
+		float error_weight_sum = prepare_error_weight_block(input_image,
+			xdim, ydim, zdim,
+			&ewp, blk, ewb);
+
+		
+		float error_of_best_block = 1e20f;
+		// int modesel=0;
+
+		imageblock pb_temp;
+		imageblock *temp = &pb_temp;
+
+		float best_errorvals_in_modes[17];
+		for (i = 0; i < 17; i++)
+			best_errorvals_in_modes[i] = 1e30f;
+
+		int uses_alpha = blk->alpha_max != blk->alpha_min;
+
+
+		// compression of average-color blocks disabled for the time being;
+		// they produce extremely severe block artifacts.
+#if 0
+		// first, compress an averaged-color block
+		compress_constant_color_block(xdim, ydim, zdim, blk, ewb, scb);
+
+		decompress_symbolic_block(decode_mode, xdim, ydim, zdim, xpos, ypos, zpos, scb, temp);
+
+		float avgblock_errorval = compute_imageblock_difference(xdim, ydim, zdim,
+			blk, temp, ewb) * 4.0f;	// bias somewhat against the average-color block.
+
+		if (avgblock_errorval < error_of_best_block)
+		{
+			error_of_best_block = avgblock_errorval;
+			// *scb = scb_candidates[j];
+			modesel = 0;
+		}
+
+		if ((error_of_best_block / error_weight_sum) < ewp.texel_avg_error_limit)
+			goto END_OF_TESTS;
+#endif
+
+
+		float mode_cutoff = ewp.block_mode_cutoff;
+
+		// next, test mode #0. This mode uses 1 plane of weights and 1 partition.
+		// we test it twice, first with a modecutoff of 0, then with the specified mode-cutoff.
+		// This causes an early-out that speeds up encoding of "easy" content.
+
+		float modecutoffs[2];
+		float errorval_mult[2] = { 2.5, 1 };
+		modecutoffs[0] = 0;
+		modecutoffs[1] = mode_cutoff;
+
+		float best_errorval_in_mode;
+		for (i = 0; i < 2; i++)
+		{
+			compress_symbolic_block_fixed_partition_1_plane(decode_mode, modecutoffs[i], ewp.max_refinement_iters, xdim, ydim, zdim, 1,	// partition count
+				0,	// partition index
+				blk, ewb, scb_candidates, &tmpplanes);
+
+			best_errorval_in_mode = 1e30f;
+			for (j = 0; j < SCB_CANDIDATES; j++)
+			{
+				if (scb_candidates[j].error_block)
+					continue;
+				decompress_symbolic_block(decode_mode, xdim, ydim, zdim, xpos, ypos, zpos, scb_candidates + j, temp);
+				float errorval = compute_imageblock_difference(xdim, ydim, zdim,
+					blk, temp, ewb) * errorval_mult[i];
+
+				if (errorval < best_errorval_in_mode)
+					best_errorval_in_mode = errorval;
+
+				if (errorval < error_of_best_block)
+				{
+					error_of_best_block = errorval;
+					*scb = scb_candidates[j];
+
+					// modesel = 0;
+				}
+
+			}
+
+			best_errorvals_in_modes[0] = best_errorval_in_mode;
+			if ((error_of_best_block / error_weight_sum) < ewp.texel_avg_error_limit)
+				goto END_OF_TESTS;
+		}
+
+		int is_normal_map;
+		float lowest_correl;
+		prepare_block_statistics(xdim, ydim, zdim, blk, ewb, &is_normal_map, &lowest_correl);
+
+		if (is_normal_map && lowest_correl < 0.99f)
+			lowest_correl = 0.99f;
+
+		// next, test the four possible 1-partition, 2-planes modes
+		for (i = 0; i < 4; i++)
+		{
+
+			if (lowest_correl > ewp.lowest_correlation_cutoff)
+				continue;
+
+			if (blk->grayscale && i != 3)
+				continue;
+
+			if (!uses_alpha && i == 3)
+				continue;
+
+			compress_symbolic_block_fixed_partition_2_planes(decode_mode, mode_cutoff, ewp.max_refinement_iters, xdim, ydim, zdim, 1,	// partition count
+				0,	// partition index
+				i,	// the color component to test a separate plane of weights for.
+				blk, ewb, scb_candidates, &tmpplanes);
+
+			FIND_BEST_SCB_CANDIDATES(i + 1);
+		}
+
+		// find best blocks for 2, 3 and 4 partitions
+		int partition_count;
+		for (partition_count = 2; partition_count <= 4; partition_count++)
+		{
+			int partition_indices_1plane[2];
+			int partition_indices_2planes[2];
+
+			find_best_partitionings(ewp.partition_search_limit,
+				xdim, ydim, zdim, partition_count, blk, ewb, 1,
+				&(partition_indices_1plane[0]), &(partition_indices_1plane[1]), &(partition_indices_2planes[0]));
+
+			for (i = 0; i < 2; i++)
+			{
+				compress_symbolic_block_fixed_partition_1_plane(decode_mode, mode_cutoff, ewp.max_refinement_iters, xdim, ydim, zdim, partition_count, partition_indices_1plane[i], blk, ewb, scb_candidates, &tmpplanes);
+
+				FIND_BEST_SCB_CANDIDATES(4 * (partition_count - 2) + 5);
+			}
+
+
+			if (partition_count == 2 && !is_normal_map && MIN(best_errorvals_in_modes[5], best_errorvals_in_modes[6]) > (best_errorvals_in_modes[0] * ewp.partition_1_to_2_limit))
+				goto END_OF_TESTS;
+
+			// don't bother to check 4 partitions for dual plane of weightss, ever.
+			if (partition_count == 4)
+				break;
+
+			for (i = 0; i < 2; i++)
+			{
+				if (lowest_correl > ewp.lowest_correlation_cutoff)
+					continue;
+				compress_symbolic_block_fixed_partition_2_planes(decode_mode,
+					mode_cutoff,
+					ewp.max_refinement_iters,
+					xdim, ydim, zdim,
+					partition_count,
+					partition_indices_2planes[i] & (PARTITION_COUNT - 1), partition_indices_2planes[i] >> PARTITION_BITS,
+					blk, ewb, scb_candidates, &tmpplanes);
+
+				FIND_BEST_SCB_CANDIDATES(4 * (partition_count - 2) + 5 + 2);
+			}
+		}
+
+	END_OF_TESTS:
+
+
+		if (scb->block_mode >= 0)
+			block_mode_histogram[scb->block_mode & 0x7ff]++;
+
+
+		// compress/decompress to a physical block
+		physical_compressed_block psb = symbolic_to_physical(xdim, ydim, zdim, scb);
+		physical_to_symbolic(xdim, ydim, zdim, psb, scb);
 	}
 }
 
@@ -1641,16 +1581,16 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 	delete[] tmpplanes.eix1;
 	delete tmpplanes.ei2;
 	delete tmpplanes.ei1;
-	delete tmpbuf.temp;
-	delete[] tmpbuf.tempblocks;
-	delete tmpbuf.ewb;
+
+	delete[] scb_candidates;
+	delete[] ewb_batch;
 }
 
 void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 {
-	tmpbuf.ewb = new error_weight_block;
-	tmpbuf.tempblocks = new symbolic_compressed_block[4];
-	tmpbuf.temp = new imageblock;
+	ewb_batch = new error_weight_block[max_blocks];
+	scb_candidates = new symbolic_compressed_block[SCB_CANDIDATES * max_blocks];
+
 	tmpplanes.ei1 = new endpoints_and_weights;
 	tmpplanes.ei2 = new endpoints_and_weights;
 	tmpplanes.eix1 = new endpoints_and_weights[MAX_DECIMATION_MODES];
@@ -1659,6 +1599,4 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 	tmpplanes.decimated_weights = new float[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK];
 	tmpplanes.flt_quantized_decimated_quantized_weights = new float[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK];
 	tmpplanes.u8_quantized_decimated_quantized_weights = new uint8_t[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK];
-	tmpbuf.plane1 = &tmpplanes;
-	tmpbuf.planes2 = &tmpplanes;
 }

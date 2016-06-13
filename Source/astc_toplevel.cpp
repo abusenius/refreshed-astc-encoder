@@ -307,7 +307,7 @@ void *encode_astc_image_threadfunc(void *vblk)
 	int xdim = blk->xdim;
 	int ydim = blk->ydim;
 	int zdim = blk->zdim;
-	physical_compressed_block *physical_blocks = (physical_compressed_block*)blk->buffer;
+	physical_compressed_block *pcb = (physical_compressed_block*)blk->buffer;
 	const error_weighting_params *ewp = blk->ewp;
 	int thread_id = blk->thread_id;
 	int threadcount = blk->threadcount;
@@ -373,7 +373,7 @@ void *encode_astc_image_threadfunc(void *vblk)
 							}
 							else
 							{
-								physical_blocks[cur_block + block_in_batch] = symbolic_to_physical(xdim, ydim, zdim, &scb_batch[block_in_batch]);
+								pcb[cur_block + block_in_batch] = symbolic_to_physical(xdim, ydim, zdim, &scb_batch[block_in_batch]);
 							}
 							NEXT_BLOCK_IN_BATCH(dx, dy, dz);
 						}

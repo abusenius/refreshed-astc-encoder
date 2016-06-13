@@ -5,6 +5,9 @@
 
 #include "astc_codec_internals.h"
 
+//how many scb candidates will be tested in each compression mode
+#define SCB_CANDIDATES 4
+
 // buffers used to store intermediate data in compress_symbolic_block_fixed_partition_*()
 struct compress_fixed_partition_buffers
 {
@@ -18,19 +21,7 @@ struct compress_fixed_partition_buffers
 	uint8_t *u8_quantized_decimated_quantized_weights;
 };
 
-struct compress_symbolic_block_buffers
-{
-	error_weight_block *ewb;
-	symbolic_compressed_block *tempblocks;
-	imageblock *temp;
-	compress_fixed_partition_buffers *plane1;
-	compress_fixed_partition_buffers *planes2;
-};
 
-
-float compress_symbolic_block(const astc_codec_image * input_image,
-	astc_decode_mode decode_mode, int xdim, int ydim, int zdim, const error_weighting_params * ewp, const imageblock * blk, symbolic_compressed_block * scb,
-	compress_symbolic_block_buffers * tmpbuf);
 
 class SymbolicBatchCompressor
 {
@@ -40,7 +31,7 @@ public:
 	//void set_tile_size(int x, int y, int z) { xdim = x; ydim = y; zdim = z; };
 	//void set_decode_mode(astc_decode_mode mode) { decode_mode = mode; };
 	//void set_error_weighting_params(const error_weighting_params *params) { ewp = *params; };
-	void compress_symbolic_batch(const astc_codec_image * input_image, const imageblock * blk, symbolic_compressed_block * scb, int batch_size);
+	void compress_symbolic_batch(const astc_codec_image * input_image, const imageblock * blk_batch, symbolic_compressed_block * scb_batch, int batch_size);
 	~SymbolicBatchCompressor();
 
 private:
@@ -50,7 +41,9 @@ private:
 	error_weighting_params ewp;
 
 	//buffers to store intermediate data during encoding
-	compress_symbolic_block_buffers tmpbuf;
+	//buffers used in compress_symbolic_batch()
+	error_weight_block * ewb_batch;
+	symbolic_compressed_block * scb_candidates;
 	compress_fixed_partition_buffers tmpplanes;
 
 	void allocate_buffers(int max_blocks);
