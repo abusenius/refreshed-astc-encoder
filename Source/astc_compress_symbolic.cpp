@@ -1312,8 +1312,6 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 	allocate_buffers(max_batch_size);
 }
 
-int block_mode_histogram[2048];
-
 #define FIND_BEST_SCB_CANDIDATES(modesel) {best_errorval_in_mode = 1e30f;\
 		for (j = 0; j < SCB_CANDIDATES; j++)\
 		{\
@@ -1332,28 +1330,29 @@ int block_mode_histogram[2048];
 		\
 			}\
 		\
-		}\
-		\
+		}}\
+
+
+#define SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE(modesel) {\
 		best_errorvals_in_modes[(modesel)] = best_errorval_in_mode;\
 		if ((error_of_best_block / error_weight_sum) < ewp.texel_avg_error_limit)\
 			goto END_OF_TESTS;}
 
+
 void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * input_image, const imageblock * blk_batch, symbolic_compressed_block * scb_batch, int batch_size)
 {
+	size_t total_finished_blocks = 0;
+
+	memset(blk_finished, 0, sizeof(uint8_t) * batch_size);
+	memset(blk_skip_2planes, 0, sizeof(uint8_t) * batch_size);
+
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 	{
 		const imageblock * blk = &blk_batch[blk_idx];
 		symbolic_compressed_block * scb = &scb_batch[blk_idx];
 
-		int i, j;
-		int xpos = blk->xpos;
-		int ypos = blk->ypos;
-		int zpos = blk->zpos;
-
-
 		if (blk->red_min == blk->red_max && blk->green_min == blk->green_max && blk->blue_min == blk->blue_max && blk->alpha_min == blk->alpha_max)
 		{
-
 			// detected a constant-color block. Encode as FP16 if using HDR
 			scb->error_block = 0;
 
@@ -1397,8 +1396,51 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 				scb->constant_color[3] = (int)floor(alpha * 65535.0f + 0.5f);
 			}
 
-			goto END_OF_TESTS;
+			blk_finished[blk_idx] = 1;
+			blk_skip_2planes[blk_idx] = 1;
+			total_finished_blocks++;
 		}
+	}
+
+	if (total_finished_blocks == batch_size)
+		return;
+
+	// compression of average-color blocks disabled for the time being;
+	// they produce extremely severe block artifacts.
+#if 0
+	// first, compress an averaged-color block
+	compress_constant_color_block(xdim, ydim, zdim, blk, ewb, scb);
+
+	decompress_symbolic_block(decode_mode, xdim, ydim, zdim, xpos, ypos, zpos, scb, temp);
+
+	float avgblock_errorval = compute_imageblock_difference(xdim, ydim, zdim,
+		blk, temp, ewb) * 4.0f;	// bias somewhat against the average-color block.
+
+	if (avgblock_errorval < error_of_best_block)
+	{
+		error_of_best_block = avgblock_errorval;
+		// *scb = scb_candidates[j];
+		modesel = 0;
+	}
+
+	if ((error_of_best_block / error_weight_sum) < ewp.texel_avg_error_limit)
+		goto END_OF_TESTS;
+#endif
+
+
+	float mode_cutoff = ewp.block_mode_cutoff;
+	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+	{
+		if (blk_finished[blk_idx])
+			continue;
+
+		const imageblock * blk = &blk_batch[blk_idx];
+		symbolic_compressed_block * scb = &scb_batch[blk_idx];
+
+		int i, j;
+		int xpos = blk->xpos;
+		int ypos = blk->ypos;
+		int zpos = blk->zpos;
 
 		error_weight_block *ewb = &ewb_batch[blk_idx];
 
@@ -1408,7 +1450,6 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 
 		
 		float error_of_best_block = 1e20f;
-		// int modesel=0;
 
 		imageblock pb_temp;
 		imageblock *temp = &pb_temp;
@@ -1418,32 +1459,6 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 			best_errorvals_in_modes[i] = 1e30f;
 
 		int uses_alpha = blk->alpha_max != blk->alpha_min;
-
-
-		// compression of average-color blocks disabled for the time being;
-		// they produce extremely severe block artifacts.
-#if 0
-		// first, compress an averaged-color block
-		compress_constant_color_block(xdim, ydim, zdim, blk, ewb, scb);
-
-		decompress_symbolic_block(decode_mode, xdim, ydim, zdim, xpos, ypos, zpos, scb, temp);
-
-		float avgblock_errorval = compute_imageblock_difference(xdim, ydim, zdim,
-			blk, temp, ewb) * 4.0f;	// bias somewhat against the average-color block.
-
-		if (avgblock_errorval < error_of_best_block)
-		{
-			error_of_best_block = avgblock_errorval;
-			// *scb = scb_candidates[j];
-			modesel = 0;
-		}
-
-		if ((error_of_best_block / error_weight_sum) < ewp.texel_avg_error_limit)
-			goto END_OF_TESTS;
-#endif
-
-
-		float mode_cutoff = ewp.block_mode_cutoff;
 
 		// next, test mode #0. This mode uses 1 plane of weights and 1 partition.
 		// we test it twice, first with a modecutoff of 0, then with the specified mode-cutoff.
@@ -1461,31 +1476,9 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 				0,	// partition index
 				blk, ewb, scb_candidates, &tmpplanes);
 
-			best_errorval_in_mode = 1e30f;
-			for (j = 0; j < SCB_CANDIDATES; j++)
-			{
-				if (scb_candidates[j].error_block)
-					continue;
-				decompress_symbolic_block(decode_mode, xdim, ydim, zdim, xpos, ypos, zpos, scb_candidates + j, temp);
-				float errorval = compute_imageblock_difference(xdim, ydim, zdim,
-					blk, temp, ewb) * errorval_mult[i];
-
-				if (errorval < best_errorval_in_mode)
-					best_errorval_in_mode = errorval;
-
-				if (errorval < error_of_best_block)
-				{
-					error_of_best_block = errorval;
-					*scb = scb_candidates[j];
-
-					// modesel = 0;
-				}
-
-			}
-
-			best_errorvals_in_modes[0] = best_errorval_in_mode;
-			if ((error_of_best_block / error_weight_sum) < ewp.texel_avg_error_limit)
-				goto END_OF_TESTS;
+			FIND_BEST_SCB_CANDIDATES(0);
+			error_of_best_block *= errorval_mult[i];
+			SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE(0);
 		}
 
 		int is_normal_map;
@@ -1514,6 +1507,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 				blk, ewb, scb_candidates, &tmpplanes);
 
 			FIND_BEST_SCB_CANDIDATES(i + 1);
+			SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE(i + 1);
 		}
 
 		// find best blocks for 2, 3 and 4 partitions
@@ -1532,6 +1526,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 				compress_symbolic_block_fixed_partition_1_plane(decode_mode, mode_cutoff, ewp.max_refinement_iters, xdim, ydim, zdim, partition_count, partition_indices_1plane[i], blk, ewb, scb_candidates, &tmpplanes);
 
 				FIND_BEST_SCB_CANDIDATES(4 * (partition_count - 2) + 5 + i);
+				SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE(4 * (partition_count - 2) + 5 + i);
 			}
 
 
@@ -1555,19 +1550,14 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 					blk, ewb, scb_candidates, &tmpplanes);
 
 				FIND_BEST_SCB_CANDIDATES(4 * (partition_count - 2) + 5 + 2 + i);
+				SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE(4 * (partition_count - 2) + 5 + 2 + i);
 			}
 		}
 
 	END_OF_TESTS:
 
-
-		if (scb->block_mode >= 0)
-			block_mode_histogram[scb->block_mode & 0x7ff]++;
-
-
-		// compress/decompress to a physical block
-		physical_compressed_block psb = symbolic_to_physical(xdim, ydim, zdim, scb);
-		physical_to_symbolic(xdim, ydim, zdim, psb, scb);
+		int label;
+		
 	}
 }
 
@@ -1582,6 +1572,8 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 	delete tmpplanes.ei2;
 	delete tmpplanes.ei1;
 
+	delete[] blk_skip_2planes;
+	delete[] blk_finished;
 	delete[] scb_candidates;
 	delete[] ewb_batch;
 }
@@ -1590,6 +1582,8 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 {
 	ewb_batch = new error_weight_block[max_blocks];
 	scb_candidates = new symbolic_compressed_block[SCB_CANDIDATES * max_blocks];
+	blk_finished = new uint8_t[max_blocks];
+	blk_skip_2planes = new uint8_t[max_blocks];
 
 	tmpplanes.ei1 = new endpoints_and_weights;
 	tmpplanes.ei2 = new endpoints_and_weights;

@@ -5,7 +5,7 @@
 
 #include "astc_codec_internals.h"
 
-//how many scb candidates will be tested in each compression mode
+// how many scb candidates will be tested in each compression mode
 #define SCB_CANDIDATES 4
 
 // buffers used to store intermediate data in compress_symbolic_block_fixed_partition_*()
@@ -40,10 +40,15 @@ private:
 	astc_decode_mode decode_mode;
 	error_weighting_params ewp;
 
-	//buffers to store intermediate data during encoding
-	//buffers used in compress_symbolic_batch()
+	uint8_t * blk_finished; // 1 if block is compressed well enough
+	uint8_t * blk_skip_2planes; // 1 if decided not to test 2 planes mode or *blk_finished==1
+
+	// buffers to store intermediate data during encoding
+	// buffers used in compress_symbolic_batch()
 	error_weight_block * ewb_batch;
 	symbolic_compressed_block * scb_candidates;
+
+	// buffers used in compress_symbolic_batch_fixed_partition_*()
 	compress_fixed_partition_buffers tmpplanes;
 
 	void allocate_buffers(int max_blocks);

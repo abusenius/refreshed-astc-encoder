@@ -95,7 +95,7 @@
 // Define this to be 1 to allow "illegal" block sizes
 #define DEBUG_ALLOW_ILLEGAL_BLOCK_SIZES 0
 
-extern int block_mode_histogram[2048];
+int block_mode_histogram[2048];
 
 #ifdef DEBUG_PRINT_DIAGNOSTICS
 	int print_diagnostics = 0;
@@ -366,6 +366,14 @@ void *encode_astc_image_threadfunc(void *vblk)
 
 						dx = x; dy = y; dz = z;
 						for (int block_in_batch = 0; block_in_batch < cur_batch_size; block_in_batch++) {
+							auto block_mode = scb_batch[block_in_batch].block_mode;
+							if (block_mode >= 0)
+								block_mode_histogram[block_mode & 0x7ff]++;
+
+							// compress/decompress to a physical block
+							physical_compressed_block psb = symbolic_to_physical(xdim, ydim, zdim, &scb_batch[block_in_batch]);
+							physical_to_symbolic(xdim, ydim, zdim, psb, &scb_batch[block_in_batch]);
+
 							if (pack_and_unpack)
 							{
 								decompress_symbolic_block(decode_mode, xdim, ydim, zdim, dx * xdim, dy * ydim, dz * zdim, &scb_batch[block_in_batch], &pb_batch[block_in_batch]);
