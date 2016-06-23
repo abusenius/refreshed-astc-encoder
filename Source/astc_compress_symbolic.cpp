@@ -1315,36 +1315,42 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 #define FIND_BEST_SCB_CANDIDATES(modesel) {best_errorval_in_mode = 1e30f;\
 		for (j = 0; j < SCB_CANDIDATES; j++)\
 		{\
-			if (scb_candidates[j].error_block)\
+			imageblock temp;\
+			auto scb2test = &scb_candidates[SCB_CANDIDATES * blk_idx];\
+			if (scb2test[j].error_block)\
 				continue;\
-			decompress_symbolic_block(decode_mode, xdim, ydim, zdim, xpos, ypos, zpos, scb_candidates + j, temp);\
-			float errorval = compute_imageblock_difference(xdim, ydim, zdim, blk, temp, ewb);\
+			decompress_symbolic_block(decode_mode, xdim, ydim, zdim, 0, 0, 0, scb2test + j, &temp);\
+			float errorval = compute_imageblock_difference(xdim, ydim, zdim, &blk_batch[blk_idx], &temp, &ewb_batch[blk_idx]);\
 		\
 			if (errorval < best_errorval_in_mode)\
 				best_errorval_in_mode = errorval;\
 		\
-			if (errorval < error_of_best_block)\
+			if (errorval < error_of_best_block[blk_idx])\
 			{\
-				error_of_best_block = errorval;\
-				*scb = scb_candidates[j];\
+				error_of_best_block[blk_idx] = errorval;\
+				scb_batch[blk_idx] = scb2test[j];\
 		\
 			}\
 		\
 		}}\
 
 
-#define SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE(modesel) {\
-		best_errorvals_in_modes[(modesel)] = best_errorval_in_mode;\
-		if ((error_of_best_block / error_weight_sum) < ewp.texel_avg_error_limit)\
-			goto END_OF_TESTS;}
+#define SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE {\
+		if ((error_of_best_block[blk_idx] / error_weight_sum_batch[blk_idx]) < ewp.texel_avg_error_limit)\
+		{\
+			blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;\
+			total_finished_blocks++;\
+			continue;\
+		}\
+		}
 
-
-void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * input_image, const imageblock * blk_batch, symbolic_compressed_block * scb_batch, int batch_size)
+void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * input_image, const imageblock * blk_batch, symbolic_compressed_block * scb_batch, int cur_batch_size)
 {
+	static_assert((PARTITION_CANDIDATES % 2) == 0, "PARTITION_CANDIDATES should be even number");
 	size_t total_finished_blocks = 0;
+	batch_size = cur_batch_size;
 
-	memset(blk_finished, 0, sizeof(uint8_t) * batch_size);
-	memset(blk_skip_2planes, 0, sizeof(uint8_t) * batch_size);
+	memset(blk_stat, BLOCK_STAT_SKIP_ALL, sizeof(uint8_t) * batch_size);
 
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 	{
@@ -1396,9 +1402,16 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 				scb->constant_color[3] = (int)floor(alpha * 65535.0f + 0.5f);
 			}
 
-			blk_finished[blk_idx] = 1;
-			blk_skip_2planes[blk_idx] = 1;
+			blk_stat[blk_idx] = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
 			total_finished_blocks++;
+		}
+		else
+		{
+			const imageblock * blk = &blk_batch[blk_idx];
+			symbolic_compressed_block * scb = &scb_batch[blk_idx];
+			error_weight_block *ewb = &ewb_batch[blk_idx];
+			error_weight_sum_batch[blk_idx] = prepare_error_weight_block(input_image, xdim, ydim, zdim, &ewp, blk, ewb);
+			error_of_best_block[blk_idx] = 1e20f;
 		}
 	}
 
@@ -1429,135 +1442,150 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 
 
 	float mode_cutoff = ewp.block_mode_cutoff;
+	float best_errorval_in_mode;
+	int i, j;
+	uint8_t skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+
+
+	// next, test mode #0. This mode uses 1 plane of weights and 1 partition.
+	// we test it twice, first with a modecutoff of 0, then with the specified mode-cutoff.
+	// This causes an early-out that speeds up encoding of "easy" content.
+	float modecutoffs[2];
+	float errorval_mult[2] = { 2.5, 1 };
+	modecutoffs[0] = 0;
+	modecutoffs[1] = mode_cutoff;
+
+	for (i = 0; i < 2; i++)
+	{
+		compress_symbolic_batch_fixed_partition_1_plane(modecutoffs[i], 1, 0, blk_batch, scb_candidates);
+		
+		for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+		{
+			if (blk_stat[blk_idx] & skip_mode)
+				continue;
+
+			FIND_BEST_SCB_CANDIDATES(0);
+			error_of_best_block[blk_idx] *= errorval_mult[i];
+			best_errorvals_in_1pl_1partition_mode[blk_idx] = error_of_best_block[blk_idx];
+			SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE;
+		}
+
+		if (total_finished_blocks == batch_size)
+			return;
+	}
+
+	//prepare block statistics
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 	{
-		if (blk_finished[blk_idx])
+		if (blk_stat[blk_idx] & skip_mode)
 			continue;
 
 		const imageblock * blk = &blk_batch[blk_idx];
-		symbolic_compressed_block * scb = &scb_batch[blk_idx];
-
-		int i, j;
-		int xpos = blk->xpos;
-		int ypos = blk->ypos;
-		int zpos = blk->zpos;
-
 		error_weight_block *ewb = &ewb_batch[blk_idx];
-
-		float error_weight_sum = prepare_error_weight_block(input_image,
-			xdim, ydim, zdim,
-			&ewp, blk, ewb);
-
-		
-		float error_of_best_block = 1e20f;
-
-		imageblock pb_temp;
-		imageblock *temp = &pb_temp;
-
-		float best_errorvals_in_modes[17];
-		for (i = 0; i < 17; i++)
-			best_errorvals_in_modes[i] = 1e30f;
-
-		int uses_alpha = blk->alpha_max != blk->alpha_min;
-
-		// next, test mode #0. This mode uses 1 plane of weights and 1 partition.
-		// we test it twice, first with a modecutoff of 0, then with the specified mode-cutoff.
-		// This causes an early-out that speeds up encoding of "easy" content.
-
-		float modecutoffs[2];
-		float errorval_mult[2] = { 2.5, 1 };
-		modecutoffs[0] = 0;
-		modecutoffs[1] = mode_cutoff;
-
-		float best_errorval_in_mode;
-		for (i = 0; i < 2; i++)
-		{
-			compress_symbolic_block_fixed_partition_1_plane(decode_mode, modecutoffs[i], ewp.max_refinement_iters, xdim, ydim, zdim, 1,	// partition count
-				0,	// partition index
-				blk, ewb, scb_candidates, &tmpplanes);
-
-			FIND_BEST_SCB_CANDIDATES(0);
-			error_of_best_block *= errorval_mult[i];
-			SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE(0);
-		}
 
 		int is_normal_map;
 		float lowest_correl;
+		
 		prepare_block_statistics(xdim, ydim, zdim, blk, ewb, &is_normal_map, &lowest_correl);
 
-		if (is_normal_map && lowest_correl < 0.99f)
-			lowest_correl = 0.99f;
-
-		// next, test the four possible 1-partition, 2-planes modes
-		for (i = 0; i < 4; i++)
+		if (is_normal_map)
 		{
+			blk_stat[blk_idx] |= BLOCK_STAT_NORMAL_MAP;
+			if (lowest_correl < 0.99f)
+				lowest_correl = 0.99f;
+		}
+		
+		if (lowest_correl > ewp.lowest_correlation_cutoff)
+			blk_stat[blk_idx] |= BLOCK_STAT_LOWEST_CORREL_CUTOFF;
 
-			if (lowest_correl > ewp.lowest_correlation_cutoff)
+		if (blk->alpha_max == blk->alpha_min)
+			blk_stat[blk_idx] |= BLOCK_STAT_NO_ALPHA;
+
+		if (blk->grayscale)
+			blk_stat[blk_idx] |= BLOCK_STAT_GREYSCALE;
+
+		best_errorvals_in_1pl_2partition_mode[blk_idx] = 1e30f;
+	}
+
+	// next, test the four possible 1-partition, 2-planes modes
+	skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF | BLOCK_STAT_LOWEST_CORREL_CUTOFF | BLOCK_STAT_GREYSCALE;
+	for (i = 0; i < 4; i++)
+	{
+		if (i == 3)
+			skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF | BLOCK_STAT_LOWEST_CORREL_CUTOFF | BLOCK_STAT_NO_ALPHA;
+
+		compress_symbolic_batch_fixed_partition_2_planes(mode_cutoff, 1, 0, i, blk_batch, scb_candidates, skip_mode);
+
+		for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+		{
+			if (blk_stat[blk_idx] & skip_mode)
 				continue;
-
-			if (blk->grayscale && i != 3)
-				continue;
-
-			if (!uses_alpha && i == 3)
-				continue;
-
-			compress_symbolic_block_fixed_partition_2_planes(decode_mode, mode_cutoff, ewp.max_refinement_iters, xdim, ydim, zdim, 1,	// partition count
-				0,	// partition index
-				i,	// the color component to test a separate plane of weights for.
-				blk, ewb, scb_candidates, &tmpplanes);
 
 			FIND_BEST_SCB_CANDIDATES(i + 1);
-			SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE(i + 1);
+			SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE;
 		}
 
-		// find best blocks for 2, 3 and 4 partitions
-		int partition_count;
-		for (partition_count = 2; partition_count <= 4; partition_count++)
+		if (total_finished_blocks == batch_size)
+			return;
+	}
+
+
+	find_best_partitionings_batch(blk_batch, partition_indices_1plane_batch, partition_indices_2planes_batch);
+
+	// find best blocks for 2, 3 and 4 partitions
+	for (int partition_count = 2; partition_count <= 4; partition_count++)
+	{
+		skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+		for (i = 0; i < 2; i++)
 		{
-			int partition_indices_1plane[2];
-			int partition_indices_2planes[2];
-
-			find_best_partitionings(ewp.partition_search_limit,
-				xdim, ydim, zdim, partition_count, blk, ewb, 1,
-				&(partition_indices_1plane[0]), &(partition_indices_1plane[1]), &(partition_indices_2planes[0]));
-
-			for (i = 0; i < 2; i++)
+			compress_symbolic_batch_fixed_partition_1_plane(mode_cutoff, partition_count, i, blk_batch, scb_candidates);
+			
+			for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 			{
-				compress_symbolic_block_fixed_partition_1_plane(decode_mode, mode_cutoff, ewp.max_refinement_iters, xdim, ydim, zdim, partition_count, partition_indices_1plane[i], blk, ewb, scb_candidates, &tmpplanes);
+				if (blk_stat[blk_idx] & skip_mode)
+					continue;
 
 				FIND_BEST_SCB_CANDIDATES(4 * (partition_count - 2) + 5 + i);
-				SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE(4 * (partition_count - 2) + 5 + i);
-			}
-
-
-			if (partition_count == 2 && !is_normal_map && MIN(best_errorvals_in_modes[5], best_errorvals_in_modes[6]) > (best_errorvals_in_modes[0] * ewp.partition_1_to_2_limit))
-				goto END_OF_TESTS;
-
-			// don't bother to check 4 partitions for dual plane of weightss, ever.
-			if (partition_count == 4)
-				break;
-
-			for (i = 0; i < 2; i++)
-			{
-				if (lowest_correl > ewp.lowest_correlation_cutoff)
-					continue;
-				compress_symbolic_block_fixed_partition_2_planes(decode_mode,
-					mode_cutoff,
-					ewp.max_refinement_iters,
-					xdim, ydim, zdim,
-					partition_count,
-					partition_indices_2planes[i] & (PARTITION_COUNT - 1), partition_indices_2planes[i] >> PARTITION_BITS,
-					blk, ewb, scb_candidates, &tmpplanes);
-
-				FIND_BEST_SCB_CANDIDATES(4 * (partition_count - 2) + 5 + 2 + i);
-				SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE(4 * (partition_count - 2) + 5 + 2 + i);
+				best_errorvals_in_1pl_2partition_mode[blk_idx] = MIN(best_errorval_in_mode, best_errorvals_in_1pl_2partition_mode[blk_idx]);
+				SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE;
 			}
 		}
 
-	END_OF_TESTS:
+		// cut compression work off if haven't gain much from 2 partition mode
+		if (partition_count == 2)
+		for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+		{
+			if (blk_stat[blk_idx] & (BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF | BLOCK_STAT_NORMAL_MAP))
+				continue;
 
-		int label;
-		
+			if (best_errorvals_in_1pl_2partition_mode[blk_idx] > (best_errorvals_in_1pl_1partition_mode[blk_idx] * ewp.partition_1_to_2_limit))
+			{
+				blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+				total_finished_blocks++;
+			}
+		}
+
+		// don't bother to check 4 partitions for dual plane of weightss, ever.
+		if (partition_count == 4)
+			return;
+
+		if (total_finished_blocks == batch_size)
+			return;
+
+		skip_mode = BLOCK_STAT_LOWEST_CORREL_CUTOFF | BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+		for (i = 0; i < 2; i++)
+		{
+			compress_symbolic_batch_fixed_partition_2_planes(mode_cutoff, partition_count, i, 0, blk_batch, scb_candidates, skip_mode);
+			
+			for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+			{
+				if (blk_stat[blk_idx] & skip_mode)
+					continue;
+
+				FIND_BEST_SCB_CANDIDATES(4 * (partition_count - 2) + 5 + 2 + i);
+				SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE;
+			}
+		}
 	}
 }
 
@@ -1572,8 +1600,14 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 	delete tmpplanes.ei2;
 	delete tmpplanes.ei1;
 
-	delete[] blk_skip_2planes;
-	delete[] blk_finished;
+	delete[] partition_indices_2planes_batch;
+	delete[] partition_indices_1plane_batch;
+
+	delete[] error_of_best_block;
+	delete[] best_errorvals_in_1pl_2partition_mode;
+	delete[] best_errorvals_in_1pl_1partition_mode;
+	delete[] error_weight_sum_batch;
+	delete[] blk_stat;
 	delete[] scb_candidates;
 	delete[] ewb_batch;
 }
@@ -1582,8 +1616,14 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 {
 	ewb_batch = new error_weight_block[max_blocks];
 	scb_candidates = new symbolic_compressed_block[SCB_CANDIDATES * max_blocks];
-	blk_finished = new uint8_t[max_blocks];
-	blk_skip_2planes = new uint8_t[max_blocks];
+	blk_stat = new uint8_t[max_blocks];
+	error_weight_sum_batch = new float[max_blocks];
+	best_errorvals_in_1pl_1partition_mode = new float[max_blocks];
+	best_errorvals_in_1pl_2partition_mode = new float[max_blocks];
+	error_of_best_block = new float[max_blocks];
+
+	partition_indices_1plane_batch = new int[PARTITION_CANDIDATES * 3 * max_blocks];
+	partition_indices_2planes_batch = new int[PARTITION_CANDIDATES * 2 * max_blocks];
 
 	tmpplanes.ei1 = new endpoints_and_weights;
 	tmpplanes.ei2 = new endpoints_and_weights;
@@ -1593,4 +1633,103 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 	tmpplanes.decimated_weights = new float[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK];
 	tmpplanes.flt_quantized_decimated_quantized_weights = new float[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK];
 	tmpplanes.u8_quantized_decimated_quantized_weights = new uint8_t[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK];
+}
+
+void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(float mode_cutoff, int partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates)
+{
+	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+	{
+		if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
+			continue;
+
+		const imageblock * blk = &blk_batch[blk_idx];
+		error_weight_block *ewb = &ewb_batch[blk_idx];
+
+		int partition_index = 0;
+		if (partition_count > 1)
+		{
+			size_t partition_base_1plane = blk_idx * PARTITION_CANDIDATES * 3;
+			int * partition_indices_1plane = partition_indices_1plane_batch + partition_base_1plane + (partition_count - 2) * PARTITION_CANDIDATES;
+			partition_index = partition_indices_1plane[partition_offset];
+		}
+
+		compress_symbolic_block_fixed_partition_1_plane(decode_mode, mode_cutoff, ewp.max_refinement_iters, xdim, ydim, zdim, partition_count,
+			partition_index, blk, ewb, &scb_candidates[SCB_CANDIDATES * blk_idx], &tmpplanes);
+	}
+}
+
+
+void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(float mode_cutoff, int partition_count, int partition_offset, int separate_component, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates, uint8_t skip_mode)
+{
+	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+	{
+		if (blk_stat[blk_idx] & skip_mode)
+			continue;
+
+		const imageblock * blk = &blk_batch[blk_idx];
+		error_weight_block *ewb = &ewb_batch[blk_idx];
+
+		int partition_index = 0;
+		if (partition_count > 1)
+		{
+			size_t partition_base_2planes = blk_idx * PARTITION_CANDIDATES * 2;
+			int * partition_indices_2planes = partition_indices_2planes_batch + partition_base_2planes + (partition_count - 2) * PARTITION_CANDIDATES;
+			partition_index = partition_indices_2planes[partition_offset] & (PARTITION_COUNT - 1);
+			separate_component = partition_indices_2planes[partition_offset] >> PARTITION_BITS;
+		}
+
+		compress_symbolic_block_fixed_partition_2_planes(decode_mode, mode_cutoff, ewp.max_refinement_iters, xdim, ydim, zdim, partition_count,
+			partition_index, separate_component, blk, ewb, &scb_candidates[SCB_CANDIDATES * blk_idx], &tmpplanes);
+	}
+}
+
+void SymbolicBatchCompressor::find_best_partitionings_batch(const imageblock * blk_batch, int * partition_indices_1plane_batch, int * partition_indices_2planes_batch)
+{
+	int best_partitions_uncorrellated[PARTITION_CANDIDATE_PAIRS]; // best partitionings to use if the endpoint colors are assumed to be uncorrellated
+	int best_partitions_samechroma[PARTITION_CANDIDATE_PAIRS]; // best partitionings to use if the endpoint colors have the same chroma
+	int best_partitions_dual_weight_planes[PARTITION_COUNT]; // best partitionings to use if dual plane of weightss are present
+
+	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+	{
+		if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
+			continue;
+
+		const imageblock * blk = &blk_batch[blk_idx];
+		error_weight_block *ewb = &ewb_batch[blk_idx];
+
+		int * partition_indices_b1plane = partition_indices_1plane_batch + blk_idx * PARTITION_CANDIDATES * 3;
+		int * partition_indices_b2planes = partition_indices_2planes_batch + blk_idx * PARTITION_CANDIDATES * 2;
+
+		for (int partition_count = 2; partition_count <= 4; partition_count++)
+		{
+			size_t partition_base_1plane = blk_idx * PARTITION_CANDIDATES * 3;
+			size_t partition_base_2planes = blk_idx * PARTITION_CANDIDATES * 2;
+			if (partition_count == 4)
+				partition_base_2planes = 0;
+
+			int * partition_indices_1plane = partition_indices_b1plane + (partition_count - 2) * PARTITION_CANDIDATES;
+			int * partition_indices_2planes = partition_indices_b2planes + (partition_count - 2) * PARTITION_CANDIDATES;
+			find_best_partitionings(ewp.partition_search_limit, xdim, ydim, zdim, partition_count, blk, ewb, PARTITION_CANDIDATE_PAIRS,
+				&(partition_indices_1plane[0]), &(partition_indices_1plane[1]), &(partition_indices_2planes[0]));
+
+			//find_best_partitionings(ewp.partition_search_limit, xdim, ydim, zdim, partition_count, blk, ewb, PARTITION_CANDIDATES / 2,
+			//	best_partitions_uncorrellated, best_partitions_samechroma, best_partitions_dual_weight_planes);
+			//
+			//for (size_t i = 0; i < (PARTITION_CANDIDATES/2); i++)
+			//{
+			//	partition_indices_1plane[2 * i] = best_partitions_uncorrellated[i];
+			//	partition_indices_1plane[2 * i + 1] = best_partitions_samechroma[i];
+			//}
+			//partition_indices_1plane += PARTITION_CANDIDATES;
+			//
+			//if (partition_count < 4)
+			//{
+			//	for (size_t i = 0; i < PARTITION_COUNT; i++)
+			//	{
+			//		partition_indices_2planes[i] = best_partitions_dual_weight_planes[i];
+			//	}
+			//	partition_indices_2planes += PARTITION_CANDIDATES;
+			//}
+		}
+	}
 }

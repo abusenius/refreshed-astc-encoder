@@ -372,16 +372,16 @@ void *encode_astc_image_threadfunc(void *vblk)
 
 							// compress/decompress to a physical block
 							physical_compressed_block psb = symbolic_to_physical(xdim, ydim, zdim, &scb_batch[block_in_batch]);
-							physical_to_symbolic(xdim, ydim, zdim, psb, &scb_batch[block_in_batch]);
 
 							if (pack_and_unpack)
 							{
+								physical_to_symbolic(xdim, ydim, zdim, psb, &scb_batch[block_in_batch]);
 								decompress_symbolic_block(decode_mode, xdim, ydim, zdim, dx * xdim, dy * ydim, dz * zdim, &scb_batch[block_in_batch], &pb_batch[block_in_batch]);
 								write_imageblock(output_image, &pb_batch[block_in_batch], xdim, ydim, zdim, dx * xdim, dy * ydim, dz * zdim, swz_decode);
 							}
 							else
 							{
-								pcb[cur_block + block_in_batch] = symbolic_to_physical(xdim, ydim, zdim, &scb_batch[block_in_batch]);
+								pcb[cur_block + block_in_batch] = psb;
 							}
 							NEXT_BLOCK_IN_BATCH(dx, dy, dz);
 						}
