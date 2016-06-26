@@ -49,6 +49,7 @@
 #include <math.h>
 
 #include "astc_codec_internals.h"
+#include "astc_codec_batch.h"
 
 #ifdef DEBUG_PRINT_DIAGNOSTICS
 	#include <stdio.h>
@@ -235,11 +236,6 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 
 	float weight_imprecision_estim_squared = weight_imprecision_estim * weight_imprecision_estim;
 
-#ifdef DEBUG_PRINT_DIAGNOSTICS
-	if (print_diagnostics)
-		printf("weight_imprecision_estim = %g\n", weight_imprecision_estim);
-#endif
-
 	int uses_alpha = imageblock_uses_alpha(xdim, ydim, zdim, pb);
 
 	const partition_info *ptab = get_partition_table(xdim, ydim, zdim, partition_count);
@@ -263,12 +259,6 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 
 	if (uses_alpha)
 	{
-
-		#ifdef DEBUG_PRINT_DIAGNOSTICS
-			if (print_diagnostics)
-				printf("Partition testing with alpha, %d partitions\n\n", partition_count);
-		#endif
-
 		for (i = 0; i < PARTITION_COUNT; i++)
 		{
 			int partition = partition_sequence[i];
@@ -276,11 +266,6 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 
 			if (bk_partition_count < partition_count)
 			{
-				#ifdef DEBUG_PRINT_DIAGNOSTICS
-					if (print_diagnostics)
-						printf("Partitioning %d-%d: invalid\n", partition_count, partition);
-				#endif
-
 				uncorr_errors[i] = 1e35f;
 				samechroma_errors[i] = 1e35f;
 				separate_red_errors[i] = 1e35f;
@@ -293,11 +278,6 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 			// than the sentinel value for invalid partitions
 			if (i >= partition_search_limit)
 			{
-				#ifdef DEBUG_PRINT_DIAGNOSTICS
-					if (print_diagnostics)
-						printf("Partitioning %d-%d: excluded from testing\n", partition_count, partition);
-				#endif
-
 				defacto_search_limit = i;
 
 				uncorr_errors[i] = 1e34f;
@@ -528,22 +508,10 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 			separate_green_errors[i] = separate_green_error;
 			separate_blue_errors[i] = separate_blue_error;
 			separate_alpha_errors[i] = separate_alpha_error;
-
-			#ifdef DEBUG_PRINT_DIAGNOSTICS
-				if (print_diagnostics)
-					printf("Partitioning %d-%d errors: uncorr=%g, samechroma=%g, sep-alpha=%g\n", partition_count, i, uncorr_error, samechroma_error, separate_alpha_error);
-			#endif
 		}
 	}
 	else
 	{
-
-		#ifdef DEBUG_PRINT_DIAGNOSTICS
-			if (print_diagnostics)
-				printf("Partition testing without alpha, %d partitions\n", partition_count);
-		#endif
-
-
 
 		for (i = 0; i < PARTITION_COUNT; i++)
 		{
@@ -553,10 +521,6 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 			int bk_partition_count = ptab[partition].partition_count;
 			if (bk_partition_count < partition_count)
 			{
-				#ifdef DEBUG_PRINT_DIAGNOSTICS
-					if (print_diagnostics)
-						printf("Partitioning %d-%d: invalid\n", partition_count, i);
-				#endif
 
 				uncorr_errors[i] = 1e35f;
 				samechroma_errors[i] = 1e35f;
@@ -569,11 +533,6 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 			// than the sentinel value for invalid partitions
 			if (i >= partition_search_limit)
 			{
-				#ifdef DEBUG_PRINT_DIAGNOSTICS
-					if (print_diagnostics)
-						printf(" Partitioning %d-%d: excluded from testing\n", partition_count, partition);
-				#endif
-
 				defacto_search_limit = i;
 				uncorr_errors[i] = 1e34f;
 				samechroma_errors[i] = 1e34f;
@@ -781,12 +740,6 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 			separate_red_errors[i] = separate_red_error;
 			separate_green_errors[i] = separate_green_error;
 			separate_blue_errors[i] = separate_blue_error;
-
-			#ifdef DEBUG_PRINT_DIAGNOSTICS
-				if (print_diagnostics)
-					printf("Partitioning %d-%d errors: uncorr=%f, samechroma=%f, sep-red=%f, sep-green=%f, sep-blue=%f\n",
-						   partition_count, partition, uncorr_error, samechroma_error, separate_red_error, separate_green_error, separate_blue_error);
-			#endif
 		}
 	}
 
@@ -862,4 +815,37 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 		best_partitions_dual_weight_planes[i] = best_partition;
 	}
 
+}
+
+
+void SymbolicBatchCompressor::find_best_partitionings_batch(const imageblock * blk_batch, int * partition_indices_1plane_batch, int * partition_indices_2planes_batch)
+{
+	int best_partitions_uncorrellated[PARTITION_CANDIDATE_PAIRS]; // best partitionings to use if the endpoint colors are assumed to be uncorrellated
+	int best_partitions_samechroma[PARTITION_CANDIDATE_PAIRS]; // best partitionings to use if the endpoint colors have the same chroma
+	int best_partitions_dual_weight_planes[PARTITION_COUNT]; // best partitionings to use if dual plane of weightss are present
+
+	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+	{
+		if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
+			continue;
+
+		const imageblock * blk = &blk_batch[blk_idx];
+		error_weight_block *ewb = &ewb_batch[blk_idx];
+
+		int * partition_indices_b1plane = partition_indices_1plane_batch + blk_idx * PARTITION_CANDIDATES * 3;
+		int * partition_indices_b2planes = partition_indices_2planes_batch + blk_idx * PARTITION_CANDIDATES * 2;
+
+		for (int partition_count = 2; partition_count <= 4; partition_count++)
+		{
+			size_t partition_base_1plane = blk_idx * PARTITION_CANDIDATES * 3;
+			size_t partition_base_2planes = blk_idx * PARTITION_CANDIDATES * 2;
+			if (partition_count == 4)
+				partition_base_2planes = 0;
+
+			int * partition_indices_1plane = partition_indices_b1plane + (partition_count - 2) * PARTITION_CANDIDATES;
+			int * partition_indices_2planes = partition_indices_b2planes + (partition_count - 2) * PARTITION_CANDIDATES;
+			find_best_partitionings(ewp.partition_search_limit, xdim, ydim, zdim, partition_count, blk, ewb, PARTITION_CANDIDATE_PAIRS,
+				&(partition_indices_1plane[0]), &(partition_indices_1plane[1]), &(partition_indices_2planes[0]));
+		}
+	}
 }
