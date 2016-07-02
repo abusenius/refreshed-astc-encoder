@@ -114,7 +114,7 @@ enum astc_decode_mode
 
 struct partition_info
 {
-	int partition_count;
+	int partition_count; // zero value indicates this partitioning is duplicated
 	uint8_t texels_per_partition[4];
 	uint8_t partition_of_texel[MAX_TEXELS_PER_BLOCK];
 	uint8_t texels_of_partition[4][MAX_TEXELS_PER_BLOCK];

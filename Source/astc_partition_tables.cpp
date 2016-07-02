@@ -70,34 +70,92 @@ static int compare_canonicalized_partition_tables(const uint64_t part1[7], const
 /* 
    For a partition table, detect partitionings that are equivalent, then mark them as invalid. This reduces the number of partitions that the codec has to consider and thus improves encode
    performance. */
-static void partition_table_zap_equal_elements(int xdim, int ydim, int zdim, partition_info * pi)
+static void partition_table_zap_equal_elements(int xdim, int ydim, int zdim, partition_info ** ptable)
 {
 	int partition_tables_zapped = 0;
 
 	int texel_count = xdim * ydim * zdim;
-
+	
 	int i, j;
-	uint64_t *canonicalizeds = new uint64_t[PARTITION_COUNT * 7];
+	partition_info * ptab;
+	uint64_t *canonicalizeds[5];
+	canonicalizeds[0] = NULL;
+	canonicalizeds[1] = NULL;
+	canonicalizeds[2] = new uint64_t[PARTITION_COUNT * 7];
+	canonicalizeds[3] = new uint64_t[PARTITION_COUNT * 7];
+	canonicalizeds[4] = new uint64_t[PARTITION_COUNT * 7];
 
-
-	for (i = 0; i < PARTITION_COUNT; i++)
+	// remove duplicates within the same ptab
+	for (int pcount = 2; pcount <= 4; pcount++)
 	{
-		gen_canonicalized_partition_table(texel_count, pi[i].partition_of_texel, canonicalizeds + i * 7);
+		ptab = ptable[pcount];
+		for (i = 0; i < PARTITION_COUNT; i++)
+			gen_canonicalized_partition_table(texel_count, ptab[i].partition_of_texel, canonicalizeds[pcount] + i * 7);
+
+		for (i = 0; i < PARTITION_COUNT; i++)
+		{
+			if (ptab[i].partition_count == 1)
+			{
+				ptab[i].partition_count = 0;
+				partition_tables_zapped++;
+				continue;
+			}
+
+			for (j = 0; j < i; j++)
+			{
+				if (compare_canonicalized_partition_tables(canonicalizeds[pcount] + 7 * i, canonicalizeds[pcount] + 7 * j))
+				{
+					ptab[i].partition_count = 0;
+					partition_tables_zapped++;
+					break;
+				}
+			}
+		}
 	}
 
+	// some partitionings have empty partitions, thus it's possible to have equivalent partitionings across ptab
+
+	// remove duplicates in 3 partition partitionings
+	ptab = ptable[3];
 	for (i = 0; i < PARTITION_COUNT; i++)
 	{
-		for (j = 0; j < i; j++)
+		if (ptab[i].partition_count == 0)
+			continue;
+		
+		for (j = 0; j < PARTITION_COUNT; j++)
 		{
-			if (compare_canonicalized_partition_tables(canonicalizeds + 7 * i, canonicalizeds + 7 * j))
+			if (compare_canonicalized_partition_tables(canonicalizeds[3] + 7 * i, canonicalizeds[2] + 7 * j))
 			{
-				pi[i].partition_count = 0;
+				ptab[i].partition_count = 0;
 				partition_tables_zapped++;
 				break;
 			}
 		}
 	}
-	delete[]canonicalizeds;
+
+	// remove duplicates in 4 partition partitionings
+	ptab = ptable[4];
+	for (i = 0; i < PARTITION_COUNT; i++)
+	{
+		if (ptab[i].partition_count == 0)
+			continue;
+
+		for (j = 0; j < PARTITION_COUNT; j++)
+		{
+			if (compare_canonicalized_partition_tables(canonicalizeds[4] + 7 * i, canonicalizeds[3] + 7 * j)
+				|| compare_canonicalized_partition_tables(canonicalizeds[4] + 7 * i, canonicalizeds[2] + 7 * j))
+			{
+				ptab[i].partition_count = 0;
+				partition_tables_zapped++;
+				break;
+			}
+		}
+	}
+	
+
+	delete[]canonicalizeds[4];
+	delete[]canonicalizeds[3];
+	delete[]canonicalizeds[2];
 }
 
 
@@ -254,17 +312,7 @@ void generate_one_partition_table(int xdim, int ydim, int zdim, int partition_co
 	for (i = 0; i < 4; i++)
 		pt->texels_per_partition[i] = counts[i];
 
-	if (counts[0] == 0)
-		pt->partition_count = 0;
-	else if (counts[1] == 0)
-		pt->partition_count = 1;
-	else if (counts[2] == 0)
-		pt->partition_count = 2;
-	else if (counts[3] == 0)
-		pt->partition_count = 3;
-	else
-		pt->partition_count = 4;
-
+	pt->partition_count = (counts[0] != 0) + (counts[1] != 0) + (counts[2] != 0) + (counts[3] != 0);
 
 
 	for (i = 0; i < 4; i++)
@@ -304,9 +352,7 @@ static void generate_partition_tables(int xdim, int ydim, int zdim)
 		generate_one_partition_table(xdim, ydim, zdim, 4, i, four_partitions + i);
 	}
 
-	partition_table_zap_equal_elements(xdim, ydim, zdim, two_partitions);
-	partition_table_zap_equal_elements(xdim, ydim, zdim, three_partitions);
-	partition_table_zap_equal_elements(xdim, ydim, zdim, four_partitions);
+	partition_table_zap_equal_elements(xdim, ydim, zdim, partition_table);
 
 	partition_tables[xdim + 16 * ydim + 256 * zdim] = partition_table;
 }
