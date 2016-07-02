@@ -18,7 +18,13 @@
 
 #include "astc_codec_internals.h"
 
-static partition_info **partition_tables[4096];
+struct partition_tables_info
+{
+	partition_info *table[5];
+	partition_statistics stats[5];
+};
+
+static partition_tables_info *partition_tables[4096];
 
 /*
 	Produce a canonicalized representation of a partition pattern
@@ -70,7 +76,7 @@ static int compare_canonicalized_partition_tables(const uint64_t part1[7], const
 /* 
    For a partition table, detect partitionings that are equivalent, then mark them as invalid. This reduces the number of partitions that the codec has to consider and thus improves encode
    performance. */
-static void partition_table_zap_equal_elements(int xdim, int ydim, int zdim, partition_info ** ptable)
+static void partition_table_zap_equal_elements(int xdim, int ydim, int zdim, partition_tables_info * ptable)
 {
 	int partition_tables_zapped = 0;
 
@@ -88,7 +94,7 @@ static void partition_table_zap_equal_elements(int xdim, int ydim, int zdim, par
 	// remove duplicates within the same ptab
 	for (int pcount = 2; pcount <= 4; pcount++)
 	{
-		ptab = ptable[pcount];
+		ptab = ptable->table[pcount];
 		for (i = 0; i < PARTITION_COUNT; i++)
 			gen_canonicalized_partition_table(texel_count, ptab[i].partition_of_texel, canonicalizeds[pcount] + i * 7);
 
@@ -116,7 +122,7 @@ static void partition_table_zap_equal_elements(int xdim, int ydim, int zdim, par
 	// some partitionings have empty partitions, thus it's possible to have equivalent partitionings across ptab
 
 	// remove duplicates in 3 partition partitionings
-	ptab = ptable[3];
+	ptab = ptable->table[3];
 	for (i = 0; i < PARTITION_COUNT; i++)
 	{
 		if (ptab[i].partition_count == 0)
@@ -134,7 +140,7 @@ static void partition_table_zap_equal_elements(int xdim, int ydim, int zdim, par
 	}
 
 	// remove duplicates in 4 partition partitionings
-	ptab = ptable[4];
+	ptab = ptable->table[4];
 	for (i = 0; i < PARTITION_COUNT; i++)
 	{
 		if (ptab[i].partition_count == 0)
@@ -156,6 +162,31 @@ static void partition_table_zap_equal_elements(int xdim, int ydim, int zdim, par
 	delete[]canonicalizeds[4];
 	delete[]canonicalizeds[3];
 	delete[]canonicalizeds[2];
+}
+
+
+static void partition_table_count_unique_partitions(partition_tables_info * ptables)
+{
+	memset(ptables->stats, 0, sizeof(ptables->stats));
+
+	ptables->stats[1].unique_partitionings = 1;
+	ptables->stats[1].unique_partitionings_with_all_partitions = 1;
+
+	uint16_t unique_partitions[5];
+	for (size_t pcount = 2; pcount <= 4; pcount++)
+	{
+		memset(unique_partitions, 0, sizeof(unique_partitions));
+
+		partition_info * ptab = ptables->table[pcount];
+		for (size_t i = 0; i < PARTITION_COUNT; i++)
+			unique_partitions[ptab[i].partition_count]++;
+
+		ptables->stats[pcount].unique_partitionings_with_2_partitions = unique_partitions[2];
+		ptables->stats[pcount].unique_partitionings_with_3_partitions = unique_partitions[3];
+		ptables->stats[pcount].unique_partitionings_with_4_partitions = unique_partitions[4];
+		ptables->stats[pcount].unique_partitionings = unique_partitions[2] + unique_partitions[3] + unique_partitions[4];
+		ptables->stats[pcount].unique_partitionings_with_all_partitions = unique_partitions[pcount];
+	}
 }
 
 
@@ -337,12 +368,12 @@ static void generate_partition_tables(int xdim, int ydim, int zdim)
 	partition_info *three_partitions = new partition_info[1024];
 	partition_info *four_partitions = new partition_info[1024];
 
-	partition_info **partition_table = new partition_info *[5];
-	partition_table[0] = NULL;
-	partition_table[1] = one_partition;
-	partition_table[2] = two_partitions;
-	partition_table[3] = three_partitions;
-	partition_table[4] = four_partitions;
+	partition_tables_info *partition_table = new partition_tables_info;
+	partition_table->table[0] = NULL;
+	partition_table->table[1] = one_partition;
+	partition_table->table[2] = two_partitions;
+	partition_table->table[3] = three_partitions;
+	partition_table->table[4] = four_partitions;
 
 	generate_one_partition_table(xdim, ydim, zdim, 1, 0, one_partition);
 	for (i = 0; i < 1024; i++)
@@ -353,6 +384,7 @@ static void generate_partition_tables(int xdim, int ydim, int zdim)
 	}
 
 	partition_table_zap_equal_elements(xdim, ydim, zdim, partition_table);
+	partition_table_count_unique_partitions(partition_table);
 
 	partition_tables[xdim + 16 * ydim + 256 * zdim] = partition_table;
 }
@@ -364,5 +396,14 @@ const partition_info *get_partition_table(int xdim, int ydim, int zdim, int part
 	if (partition_tables[ptindex] == NULL)
 		generate_partition_tables(xdim, ydim, zdim);
 
-	return partition_tables[ptindex][partition_count];
+	return partition_tables[ptindex]->table[partition_count];
+}
+
+const partition_statistics *get_partition_stats(int xdim, int ydim, int zdim, int partition_count)
+{
+	int ptindex = xdim + 16 * ydim + 256 * zdim;
+	if (partition_tables[ptindex] == NULL)
+		generate_partition_tables(xdim, ydim, zdim);
+
+	return &partition_tables[ptindex]->stats[partition_count];
 }

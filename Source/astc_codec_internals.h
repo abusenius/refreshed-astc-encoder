@@ -122,7 +122,14 @@ struct partition_info
 	uint64_t coverage_bitmaps[4];	// used for the purposes of k-means partition search.
 };
 
-
+struct partition_statistics
+{
+	uint16_t unique_partitionings;
+	uint16_t unique_partitionings_with_all_partitions;
+	uint16_t unique_partitionings_with_2_partitions;
+	uint16_t unique_partitionings_with_3_partitions;
+	uint16_t unique_partitionings_with_4_partitions;
+};
 
 
 /* 
@@ -415,7 +422,8 @@ extern int quantization_mode_table[17][128];
 // function to get a pointer to a partition table or an array thereof.
 const partition_info *get_partition_table(int xdim, int ydim, int zdim, int partition_count);
 
-
+// function to get a pointer to a table with unique partitionings count
+const partition_statistics *get_partition_stats(int xdim, int ydim, int zdim, int partition_count);
 
 
 // functions to compute color averages and dominant directions
