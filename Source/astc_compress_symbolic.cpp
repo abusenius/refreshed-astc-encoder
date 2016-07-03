@@ -1299,16 +1299,24 @@ void compress_constant_color_block(int xdim, int ydim, int zdim, const imagebloc
 	}
 }
 
-SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size)
-	: max_batch_size(_max_batch_size), xdim(4), ydim(4), zdim(1), decode_mode(astc_decode_mode::DECODE_LDR)
-{
-	allocate_buffers(max_batch_size);
-}
+//SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size)
+//	: max_batch_size(_max_batch_size), xdim(4), ydim(4), zdim(1), decode_mode(astc_decode_mode::DECODE_LDR)
+//{
+//	allocate_buffers(max_batch_size);
+//}
 
 SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim, int _ydim, int _zdim, astc_decode_mode _decode_mode, const error_weighting_params * _ewp)
 	: max_batch_size(_max_batch_size), xdim(_xdim), ydim(_ydim), zdim(_zdim), decode_mode(_decode_mode)
 {
 	ewp = *_ewp;
+	const partition_statistics * pstat;
+	
+	for (size_t pcount = 2; pcount <= 4; pcount++)
+	{
+		pstat = get_partition_stats(xdim, ydim, zdim, pcount);
+		partition_search_limits[pcount] = MIN(ewp.partition_search_limit, pstat->unique_partitionings_with_all_partitions);
+	}
+
 	allocate_buffers(max_batch_size);
 }
 

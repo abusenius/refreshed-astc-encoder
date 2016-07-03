@@ -38,7 +38,7 @@ struct compress_fixed_partition_buffers
 class SymbolicBatchCompressor
 {
 public:
-	SymbolicBatchCompressor(int batch_size);
+	//SymbolicBatchCompressor(int batch_size);
 	SymbolicBatchCompressor(int batch_size, int xdim, int ydim, int zdim, astc_decode_mode decode_mode, const error_weighting_params *ewp);
 	//void set_tile_size(int x, int y, int z) { xdim = x; ydim = y; zdim = z; };
 	//void set_decode_mode(astc_decode_mode mode) { decode_mode = mode; };
@@ -52,6 +52,7 @@ private:
 	int xdim, ydim, zdim;
 	astc_decode_mode decode_mode;
 	error_weighting_params ewp;
+	uint16_t partition_search_limits[5];
 
 	uint8_t * blk_stat; //used to skip some compression modes
 	
