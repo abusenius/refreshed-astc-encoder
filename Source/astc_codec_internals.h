@@ -166,12 +166,13 @@ typedef struct
 */
 typedef struct
 {
+	float percentile;
 	int8_t decimation_mode;
 	int8_t quantization_mode;
 	int8_t is_dual_plane;
 	int8_t permit_encode;
 	int8_t permit_decode;
-	float percentile;
+	int8_t padding[3]; // to match OpenCL struct alignment
 } block_mode;
 
 
@@ -299,6 +300,7 @@ typedef struct
 	float texel_weight_a[MAX_TEXELS_PER_BLOCK];
 
 	int contains_zeroweight_texels;
+	int padding[3]; // to match OpenCL struct alignment
 } error_weight_block;
 
 
