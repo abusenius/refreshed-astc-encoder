@@ -17,9 +17,11 @@
 
 #define ASTC_CODEC_INTERNALS_INCLUDED
 
+#ifndef OPENCL_C_KERNEL
 #include <stdint.h>
 #include <stdlib.h>
 #include "mathlib.h"
+#endif // !OPENCL_C_KERNEL
 
 #ifndef MIN
 	#define MIN(x,y) ((x)<(y)?(x):(y))
@@ -66,38 +68,40 @@ void astc_codec_internal_error(const char *filename, int linenumber);
 	extern int print_diagnostics;
 #endif
 
+#ifndef OPENCL_C_KERNEL
 extern int print_tile_errors;
 extern int print_statistics;
 
 extern int perform_srgb_transform;
 extern int rgb_force_use_of_hdr;
 extern int alpha_force_use_of_hdr;
+#endif // !OPENCL_C_KERNEL
 
-struct processed_line2
+typedef struct
 {
 	float2 amod;
 	float2 bs;
 	float2 bis;
-};
-struct processed_line3
+} processed_line2;
+typedef struct
 {
 	float3 amod;
 	float3 bs;
 	float3 bis;
-};
-struct processed_line4
+} processed_line3;
+typedef struct
 {
 	float4 amod;
 	float4 bs;
 	float4 bis;
-};
+} processed_line4;
 
-enum astc_decode_mode
+typedef enum
 {
 	DECODE_LDR_SRGB,
 	DECODE_LDR,
 	DECODE_HDR
-};
+} astc_decode_mode;
 
 
 /* 
@@ -112,7 +116,7 @@ enum astc_decode_mode
 	* Each element in the table is an uint8_t indicating partition index (0, 1, 2 or 3)
 */
 
-struct partition_info
+typedef struct
 {
 	int partition_count; // zero value indicates this partitioning is duplicated
 	uint8_t texels_per_partition[4];
@@ -120,16 +124,16 @@ struct partition_info
 	uint8_t texels_of_partition[4][MAX_TEXELS_PER_BLOCK];
 
 	uint64_t coverage_bitmaps[4];	// used for the purposes of k-means partition search.
-};
+} partition_info;
 
-struct partition_statistics
+typedef struct
 {
 	uint16_t unique_partitionings;
 	uint16_t unique_partitionings_with_all_partitions;
 	uint16_t unique_partitionings_with_2_partitions;
 	uint16_t unique_partitionings_with_3_partitions;
 	uint16_t unique_partitionings_with_4_partitions;
-};
+} partition_statistics;
 
 
 /* 
@@ -140,7 +144,7 @@ struct partition_statistics
    weights it is a combination of for each weight, which texels it contributes to.
    The decimation_table is this data structure.
 */
-struct decimation_table
+typedef struct
 {
 	int num_texels;
 	int num_weights;
@@ -152,7 +156,7 @@ struct decimation_table
 	uint8_t weight_texel[MAX_WEIGHTS_PER_BLOCK][MAX_TEXELS_PER_BLOCK];	// the texels that the weight contributes to
 	uint8_t weights_int[MAX_WEIGHTS_PER_BLOCK][MAX_TEXELS_PER_BLOCK];	// the weights that the weight contributes to a texel.
 	float weights_flt[MAX_WEIGHTS_PER_BLOCK][MAX_TEXELS_PER_BLOCK];	// the weights that the weight contributes to a texel.
-};
+} decimation_table;
 
 
 
@@ -160,7 +164,7 @@ struct decimation_table
 /* 
    data structure describing information that pertains to a block size and its associated block modes.
 */
-struct block_mode
+typedef struct
 {
 	int8_t decimation_mode;
 	int8_t quantization_mode;
@@ -168,10 +172,10 @@ struct block_mode
 	int8_t permit_encode;
 	int8_t permit_decode;
 	float percentile;
-};
+} block_mode;
 
 
-struct block_size_descriptor
+typedef struct
 {
 	int decimation_mode_count;
 	int decimation_mode_samples[MAX_DECIMATION_MODES];
@@ -187,12 +191,12 @@ struct block_size_descriptor
 	// which 64 texels (if that many) to consider.
 	int texelcount_for_bitmap_partitioning;
 	int texels_for_bitmap_partitioning[64];
-};
+} block_size_descriptor;
 
 // data structure representing one block of an image.
 // it is expanded to float prior to processing to save some computation time
 // on conversions to/from uint8_t (this also allows us to handle hdr textures easily)
-struct imageblock
+typedef struct
 {
 	float orig_data[MAX_TEXELS_PER_BLOCK * 4];	// original input data
 	float work_data[MAX_TEXELS_PER_BLOCK * 4];	// the data that we will compress, either linear or LNS (0..65535 in both cases)
@@ -209,10 +213,10 @@ struct imageblock
 	int grayscale;				// 1 if R=G=B for every pixel, 0 otherwise
 
 	int xpos, ypos, zpos;
-};
+} imageblock;
 
 
-struct error_weighting_params
+typedef struct
 {
 	float rgb_power;
 	float rgb_base_weight;
@@ -239,7 +243,7 @@ struct error_weighting_params
 	float partition_1_to_2_limit;
 	float lowest_correlation_cutoff;
 	int max_refinement_iters;
-};
+} error_weighting_params;
 
 
 
@@ -275,7 +279,7 @@ void imageblock_initialize_work_from_orig(imageblock * pb, int pixelcount);
 	texel_weight[i] = (texel_weight_r[i] + texel_weight_g[i] + texel_weight_b[i] + texel_weight_a[i] / 4
  */
 
-struct error_weight_block
+typedef struct
 {
 	float4 error_weights[MAX_TEXELS_PER_BLOCK];
 	float texel_weight[MAX_TEXELS_PER_BLOCK];
@@ -295,12 +299,12 @@ struct error_weight_block
 	float texel_weight_a[MAX_TEXELS_PER_BLOCK];
 
 	int contains_zeroweight_texels;
-};
+} error_weight_block;
 
 
 
 // enumeration of all the quantization methods we support under this format.  
-enum quantization_method
+typedef enum
 {
 	QUANT_2 = 0,
 	QUANT_3 = 1,
@@ -323,7 +327,7 @@ enum quantization_method
 	QUANT_160 = 18,
 	QUANT_192 = 19,
 	QUANT_256 = 20
-};
+} quantization_method;
 
 
 /* 
@@ -335,7 +339,7 @@ enum quantization_method
 	and floating-point values. For each quantized weight, a previous-value and a next-value.
 */
 
-struct quantization_and_transfer_table
+typedef struct
 {
 	quantization_method method;
 	uint8_t unquantized_value[32];	// 0..64
@@ -343,13 +347,15 @@ struct quantization_and_transfer_table
 	uint8_t prev_quantized_value[32];
 	uint8_t next_quantized_value[32];
 	uint8_t closest_quantized_weight[1025];
-};
+} quantization_and_transfer_table;
 
+#ifndef OPENCL_C_KERNEL
 extern const quantization_and_transfer_table quant_and_xfer_tables[12];
+#endif // !OPENCL_C_KERNEL
 
 
 
-enum endpoint_formats
+typedef enum
 {
 	FMT_LUMINANCE = 0,
 	FMT_LUMINANCE_DELTA = 1,
@@ -367,11 +373,11 @@ enum endpoint_formats
 	FMT_RGBA_DELTA = 13,
 	FMT_HDR_RGB_LDR_ALPHA = 14,
 	FMT_HDR_RGBA = 15,
-};
+} endpoint_formats;
 
 
 
-struct symbolic_compressed_block
+typedef struct
 {
 	int error_block;			// 1 marks error block, 0 marks non-error-block.
 	int block_mode;				// 0 to 2047. Negative value marks constant-color block (-1: FP16, -2:UINT16)
@@ -385,23 +391,23 @@ struct symbolic_compressed_block
 	uint8_t plane2_weights[MAX_WEIGHTS_PER_BLOCK];
 	int plane2_color_component;	// color component for the secondary plane of weights
 	int constant_color[4];		// constant-color, as FP16 or UINT16. Used for constant-color blocks only.
-};
+} symbolic_compressed_block;
 
 
-struct physical_compressed_block
+typedef struct
 {
 	uint8_t data[16];
-};
+} physical_compressed_block;
 
 
 
 
 const block_size_descriptor *get_block_size_descriptor(int xdim, int ydim, int zdim);
 
-
 // ***********************************************************
 // functions and data pertaining to quantization and encoding
 // **********************************************************
+#ifndef OPENCL_C_KERNEL
 extern const uint8_t color_quantization_tables[21][256];
 extern const uint8_t color_unquantization_tables[21][256];
 
@@ -413,6 +419,8 @@ int compute_ise_bitcount(int items, quantization_method quant);
 
 void build_quantization_mode_table(void);
 extern int quantization_mode_table[17][128];
+#endif // !OPENCL_C_KERNEL
+
 
 
 // **********************************************
@@ -528,12 +536,11 @@ void kmeans_compute_partition_ordering(int xdim, int ydim, int zdim, int partiti
 
 
 
-
 // *********************************************************
 // functions and data pertaining to images and imageblocks
 // *********************************************************
 
-struct astc_codec_image
+typedef struct
 {
 	uint8_t ***imagedata8;
 	uint16_t ***imagedata16;
@@ -541,8 +548,9 @@ struct astc_codec_image
 	int ysize;
 	int zsize;
 	int padding;
-};
+} astc_codec_image;
 
+#ifndef OPENCL_C_KERNEL
 void destroy_image(astc_codec_image * img);
 astc_codec_image *allocate_image(int bitness, int xsize, int ysize, int zsize, int padding);
 void initialize_image(astc_codec_image * img);
@@ -555,13 +563,13 @@ extern float ***input_alpha_averages;
 
 
 // the entries here : 0=red, 1=green, 2=blue, 3=alpha, 4=0.0, 5=1.0
-struct swizzlepattern
+typedef struct
 {
 	uint8_t r;
 	uint8_t g;
 	uint8_t b;
 	uint8_t a;
-};
+} swizzlepattern;
 
 
 
@@ -631,7 +639,7 @@ int imageblock_uses_alpha(int xdim, int ydim, int zdim, const imageblock * pb);
 
 float compute_imageblock_difference(int xdim, int ydim, int zdim, const imageblock * p1, const imageblock * p2, const error_weight_block * ewb);
 
-
+#endif // !OPENCL_C_KERNEL
 
 
 
@@ -640,20 +648,20 @@ float compute_imageblock_difference(int xdim, int ydim, int zdim, const imageblo
 // ***********************************************************
 
 
-struct endpoints
+typedef struct
 {
 	int partition_count;
 	float4 endpt0[4];
 	float4 endpt1[4];
-};
+} endpoints;
 
 
-struct endpoints_and_weights
+typedef struct
 {
 	endpoints ep;
 	float weights[MAX_TEXELS_PER_BLOCK];
 	float weight_error_scale[MAX_TEXELS_PER_BLOCK];
-};
+} endpoints_and_weights;
 
 
 void compute_endpoints_and_ideal_weights_1_plane(int xdim, int ydim, int zdim, const partition_info * pt, const imageblock * blk, const error_weight_block * ewb, endpoints_and_weights * ei);
@@ -695,7 +703,7 @@ int pack_color_endpoints(astc_decode_mode decode_mode, float4 color0, float4 col
 void unpack_color_endpoints(astc_decode_mode decode_mode, int format, int quantization_level, const int *input, int *rgb_hdr, int *alpha_hdr, int *nan_endpoint, ushort4 * output0, ushort4 * output1);
 
 
-struct encoding_choice_errors
+typedef struct
 {
 	float rgb_scale_error;		// error of using LDR RGB-scale instead of complete endpoints.
 	float rgb_luma_error;		// error of using HDR RGB-scale instead of complete endpoints.
@@ -704,7 +712,7 @@ struct encoding_choice_errors
 	float rgb_drop_error;		// error of discarding rgb
 	int can_offset_encode;
 	int can_blue_contract;
-};
+} encoding_choice_errors;
 
 
 
