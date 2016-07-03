@@ -51,11 +51,6 @@
 
 #include "astc_codec_internals.h"
 #include "astc_codec_batch.h"
-
-#ifdef DEBUG_PRINT_DIAGNOSTICS
-	#include <stdio.h>
-#endif
-
 #include "mathlib.h"
 
 int imageblock_uses_alpha(int xdim, int ydim, int zdim, const imageblock * pb)
@@ -191,7 +186,6 @@ void compute_partition_error_color_weightings(int xdim, int ydim, int zdim, cons
 		color_scalefactors[i].z = sqrt(error_weightings[i].z);
 		color_scalefactors[i].w = sqrt(error_weightings[i].w);
 	}
-
 }
 
 
@@ -199,43 +193,14 @@ void compute_partition_error_color_weightings(int xdim, int ydim, int zdim, cons
    main function to identify the best partitioning for a given number of texels */
 
 
-void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int zdim, int partition_count,
-							 const imageblock * pb, const error_weight_block * ewb, int candidates_to_return,
-							 // best partitionings to use if the endpoint colors are assumed to be uncorrellated
-							 int *best_partitions_uncorrellated,
-							 // best partitionings to use if the endpoint colors have the same chroma
-							 int *best_partitions_samechroma,
-							 // best partitionings to use if using dual plane of weightss
-							 int *best_partitions_dual_weight_planes)
+void SymbolicBatchCompressor::find_best_partitionings(int partition_search_limit, int partition_count,
+							 const imageblock * pb, const error_weight_block * ewb,
+							 uint16_t *best_partitions_single_weight_plane, uint16_t *best_partitions_dual_weight_planes)
 {
-
-
 	int i, j;
-
-	int texels_per_block = xdim * ydim * zdim;
-
-	// constant used to estimate quantization error for a given partitioning;
-	// the optimal value for this constant depends on bitrate.
-	// These constants have been determined empirically.
-
-	float weight_imprecision_estim = 100;
-
-	if (texels_per_block <= 20)
-		weight_imprecision_estim = 0.03f;
-	else if (texels_per_block <= 31)
-		weight_imprecision_estim = 0.04f;
-	else if (texels_per_block <= 41)
-		weight_imprecision_estim = 0.05f;
-	else
-		weight_imprecision_estim = 0.055f;
-
-
-	int partition_sequence[PARTITION_COUNT];
+	uint16_t partition_sequence[PARTITION_COUNT];
 
 	kmeans_compute_partition_ordering(xdim, ydim, zdim, partition_count, pb, partition_sequence);
-
-
-	float weight_imprecision_estim_squared = weight_imprecision_estim * weight_imprecision_estim;
 
 	int uses_alpha = imageblock_uses_alpha(xdim, ydim, zdim, pb);
 
@@ -249,7 +214,6 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 	// partitioning errors assuming that one of the color channels
 	// is uncorrellated from all the other ones
 	float separate_errors[4 * PARTITION_COUNT];
-
 
 	float *separate_red_errors = separate_errors;
 	float *separate_green_errors = separate_errors + PARTITION_COUNT;
@@ -439,7 +403,7 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 				float tpp = (float)(ptab[partition].texels_per_partition[j]);
 
 				float4 ics = inverse_color_scalefactors[j];
-				float4 error_weights = error_weightings[j] * (tpp * weight_imprecision_estim_squared);
+				float4 error_weights = error_weightings[j] * (tpp * fbp.weight_imprecision_estim_squared);
 
 				float4 uncorr_vector = (uncorr_lines[j].b * uncorr_linelengths[j]) * ics;
 				float4 samechroma_vector = (samechroma_lines[j].b * samechroma_linelengths[j]) * ics;
@@ -645,7 +609,7 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 				float tpp = (float)(ptab[partition].texels_per_partition[j]);
 
 				float3 ics = inverse_color_scalefactors[j].xyz;
-				float3 error_weights = error_weightings[j].xyz * (tpp * weight_imprecision_estim_squared);
+				float3 error_weights = error_weightings[j].xyz * (tpp * fbp.weight_imprecision_estim_squared);
 
 				float3 uncorr_vector = (uncorr_lines[j].b * uncorr_linelengths[j]) * ics;
 				float3 samechroma_vector = (samechroma_lines[j].b * samechroma_linelengths[j]) * ics;
@@ -687,8 +651,8 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 		}
 	}
 
-
-	for (i = 0; i < candidates_to_return; i++)
+	static_assert(PARTITION_CANDIDATES % 2 == 0, "PARTITION_CANDIDATES should be even number");
+	for (i = 0; i < (PARTITION_CANDIDATES/2); i++)
 	{
 		int best_uncorr_partition = 0;
 		int best_samechroma_partition = 0;
@@ -702,7 +666,7 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 				best_uncorr_error = uncorr_errors[j];
 			}
 		}
-		best_partitions_uncorrellated[i] = partition_sequence[best_uncorr_partition];
+		best_partitions_single_weight_plane[2 * i] = partition_sequence[best_uncorr_partition];
 		uncorr_errors[best_uncorr_partition] = 1e30f;
 		samechroma_errors[best_uncorr_partition] = 1e30f;
 
@@ -714,12 +678,12 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 				best_samechroma_error = samechroma_errors[j];
 			}
 		}
-		best_partitions_samechroma[i] = partition_sequence[best_samechroma_partition];
+		best_partitions_single_weight_plane[2 * i + 1] = partition_sequence[best_samechroma_partition];
 		samechroma_errors[best_samechroma_partition] = 1e30f;
 		uncorr_errors[best_samechroma_partition] = 1e30f;
 	}
 
-	for (i = 0; i < 2 * candidates_to_return; i++)
+	for (i = 0; i < PARTITION_CANDIDATES; i++)
 	{
 		int best_partition = 0;
 		float best_partition_error = 1e30f;
@@ -762,12 +726,8 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 }
 
 
-void SymbolicBatchCompressor::find_best_partitionings_batch(const imageblock * blk_batch, int * partition_indices_1plane_batch, int * partition_indices_2planes_batch)
+void SymbolicBatchCompressor::find_best_partitionings_batch(int partition_count, const imageblock * blk_batch, uint16_t * partition_indices_1plane_batch, uint16_t * partition_indices_2planes_batch)
 {
-	int best_partitions_uncorrellated[PARTITION_CANDIDATE_PAIRS]; // best partitionings to use if the endpoint colors are assumed to be uncorrellated
-	int best_partitions_samechroma[PARTITION_CANDIDATE_PAIRS]; // best partitionings to use if the endpoint colors have the same chroma
-	int best_partitions_dual_weight_planes[PARTITION_COUNT]; // best partitionings to use if dual plane of weightss are present
-
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 	{
 		if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
@@ -776,20 +736,9 @@ void SymbolicBatchCompressor::find_best_partitionings_batch(const imageblock * b
 		const imageblock * blk = &blk_batch[blk_idx];
 		error_weight_block *ewb = &ewb_batch[blk_idx];
 
-		int * partition_indices_b1plane = partition_indices_1plane_batch + blk_idx * PARTITION_CANDIDATES * 3;
-		int * partition_indices_b2planes = partition_indices_2planes_batch + blk_idx * PARTITION_CANDIDATES * 2;
-
-		for (int partition_count = 2; partition_count <= 4; partition_count++)
-		{
-			size_t partition_base_1plane = blk_idx * PARTITION_CANDIDATES * 3;
-			size_t partition_base_2planes = blk_idx * PARTITION_CANDIDATES * 2;
-			if (partition_count == 4)
-				partition_base_2planes = 0;
-
-			int * partition_indices_1plane = partition_indices_b1plane + (partition_count - 2) * PARTITION_CANDIDATES;
-			int * partition_indices_2planes = partition_indices_b2planes + (partition_count - 2) * PARTITION_CANDIDATES;
-			find_best_partitionings(partition_search_limits[partition_count], xdim, ydim, zdim, partition_count, blk, ewb, PARTITION_CANDIDATE_PAIRS,
-				&(partition_indices_1plane[0]), &(partition_indices_1plane[1]), &(partition_indices_2planes[0]));
-		}
+		uint16_t * partition_indices_1plane = partition_indices_1plane_batch + blk_idx * PARTITION_CANDIDATES;
+		uint16_t * partition_indices_2planes = partition_indices_2planes_batch + blk_idx * PARTITION_CANDIDATES;
+		find_best_partitionings(fbp.partition_search_limits[partition_count], partition_count, blk, ewb,
+			partition_indices_1plane, partition_indices_2planes);
 	}
 }

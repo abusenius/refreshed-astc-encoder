@@ -9,8 +9,7 @@
 #define SCB_CANDIDATES 4
 
 // how many partitions will be tested for each multipartition mode
-#define PARTITION_CANDIDATE_PAIRS 1
-#define PARTITION_CANDIDATES (2 * PARTITION_CANDIDATE_PAIRS)
+#define PARTITION_CANDIDATES 2
 
 // flags used to skip some compression modes
 #define BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF 1
@@ -33,16 +32,23 @@ struct compress_fixed_partition_buffers
 	uint8_t *u8_quantized_decimated_quantized_weights;
 };
 
+// buffers and constants used to store intermediate data in find_best_partitionings_batch()
+struct find_best_partitionings_buffers
+{
+	uint16_t * partition_sequence;
+	float * uncorr_errors; // partitioning errors assuming uncorrellated-chrominance endpoints
+	float * samechroma_errors; // partitioning errors assuming same-chrominance endpoints
+	float * separate_errors; // partitioning errors assuming that one of the color channels is uncorrellated from all the other ones
+
+	float weight_imprecision_estim_squared;
+	uint16_t partition_search_limits[5];
+};
 
 
 class SymbolicBatchCompressor
 {
 public:
-	//SymbolicBatchCompressor(int batch_size);
 	SymbolicBatchCompressor(int batch_size, int xdim, int ydim, int zdim, astc_decode_mode decode_mode, const error_weighting_params *ewp);
-	//void set_tile_size(int x, int y, int z) { xdim = x; ydim = y; zdim = z; };
-	//void set_decode_mode(astc_decode_mode mode) { decode_mode = mode; };
-	//void set_error_weighting_params(const error_weighting_params *params) { ewp = *params; };
 	void compress_symbolic_batch(const astc_codec_image * input_image, const imageblock * blk_batch, symbolic_compressed_block * scb_batch, int batch_size);
 	~SymbolicBatchCompressor();
 
@@ -52,7 +58,6 @@ private:
 	int xdim, ydim, zdim;
 	astc_decode_mode decode_mode;
 	error_weighting_params ewp;
-	uint16_t partition_search_limits[5];
 
 	uint8_t * blk_stat; //used to skip some compression modes
 	
@@ -64,16 +69,18 @@ private:
 	float * error_of_best_block;
 	error_weight_block * ewb_batch;
 	symbolic_compressed_block * scb_candidates;
-	int * partition_indices_1plane_batch;
-	int * partition_indices_2planes_batch;
+	uint16_t * partition_indices_1plane_batch;
+	uint16_t * partition_indices_2planes_batch;
 
 	// buffers used in compress_symbolic_batch_fixed_partition_*()
 	compress_fixed_partition_buffers tmpplanes;
+	find_best_partitionings_buffers fbp;
 
 	void allocate_buffers(int max_blocks);
 	void compress_symbolic_batch_fixed_partition_1_plane(float mode_cutoff, int partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates);
 	void compress_symbolic_batch_fixed_partition_2_planes(float mode_cutoff, int partition_count, int partition_offset, int separate_component, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates, uint8_t skip_mode);
-	void find_best_partitionings_batch(const imageblock * blk_batch, int * partition_indices_1plane_batch, int * partition_indices_2planes_batch);
+	void find_best_partitionings_batch(int partition_count, const imageblock * blk_batch, uint16_t * partition_indices_1plane_batch, uint16_t * partition_indices_2planes_batch);
+	void find_best_partitionings(int partition_search_limit, int partition_count, const imageblock * pb, const error_weight_block * ewb, uint16_t *best_partitions_single_weight_plane, uint16_t *best_partitions_dual_weight_planes);
 };
 
 

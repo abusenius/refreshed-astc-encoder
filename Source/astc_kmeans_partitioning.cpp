@@ -447,7 +447,7 @@ void count_partition_mismatch_bits(int xdim, int ydim, int zdim, int partition_c
 // counting-sort on the mismatch-bits, thereby
 // sorting the partitions into an ordering.
 
-void get_partition_ordering_by_mismatch_bits(const int mismatch_bits[PARTITION_COUNT], int partition_ordering[PARTITION_COUNT])
+static void get_partition_ordering_by_mismatch_bits(const int mismatch_bits[PARTITION_COUNT], uint16_t partition_ordering[PARTITION_COUNT])
 {
 	int i;
 
@@ -476,7 +476,7 @@ void get_partition_ordering_by_mismatch_bits(const int mismatch_bits[PARTITION_C
 
 
 
-void kmeans_compute_partition_ordering(int xdim, int ydim, int zdim, int partition_count, const imageblock * blk, int *ordering)
+void kmeans_compute_partition_ordering(int xdim, int ydim, int zdim, int partition_count, const imageblock * blk, uint16_t *ordering)
 {
 	int i;
 

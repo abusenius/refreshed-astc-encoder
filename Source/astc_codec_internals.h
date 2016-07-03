@@ -524,7 +524,7 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 
 
 // use k-means clustering to compute a partition ordering for a block.
-void kmeans_compute_partition_ordering(int xdim, int ydim, int zdim, int partition_count, const imageblock * blk, int *ordering);
+void kmeans_compute_partition_ordering(int xdim, int ydim, int zdim, int partition_count, const imageblock * blk, uint16_t *ordering);
 
 
 

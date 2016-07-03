@@ -1314,8 +1314,24 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 	for (size_t pcount = 2; pcount <= 4; pcount++)
 	{
 		pstat = get_partition_stats(xdim, ydim, zdim, pcount);
-		partition_search_limits[pcount] = MIN(ewp.partition_search_limit, pstat->unique_partitionings_with_all_partitions);
+		fbp.partition_search_limits[pcount] = MIN(ewp.partition_search_limit, pstat->unique_partitionings_with_all_partitions);
 	}
+
+	int texels_per_block = xdim * ydim * zdim;
+
+	// constant used to estimate quantization error for a given partitioning;
+	// the optimal value for this constant depends on bitrate.
+	// These constants have been determined empirically.
+	float weight_imprecision_estim = 100;
+	if (texels_per_block <= 20)
+		weight_imprecision_estim = 0.03f;
+	else if (texels_per_block <= 31)
+		weight_imprecision_estim = 0.04f;
+	else if (texels_per_block <= 41)
+		weight_imprecision_estim = 0.05f;
+	else
+		weight_imprecision_estim = 0.055f;
+	fbp.weight_imprecision_estim_squared = weight_imprecision_estim * weight_imprecision_estim;
 
 	allocate_buffers(max_batch_size);
 }
@@ -1538,11 +1554,12 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 	}
 
 
-	find_best_partitionings_batch(blk_batch, partition_indices_1plane_batch, partition_indices_2planes_batch);
 
 	// find best blocks for 2, 3 and 4 partitions
 	for (int partition_count = 2; partition_count <= 4; partition_count++)
 	{
+		find_best_partitionings_batch(partition_count, blk_batch, partition_indices_1plane_batch, partition_indices_2planes_batch);
+
 		skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
 		for (i = 0; i < 2; i++)
 		{
@@ -1599,6 +1616,11 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 
 SymbolicBatchCompressor::~SymbolicBatchCompressor()
 {
+	delete[] fbp.separate_errors;
+	delete[] fbp.uncorr_errors;
+	delete[] fbp.samechroma_errors;
+	delete[] fbp.partition_sequence;
+
 	delete[] tmpplanes.u8_quantized_decimated_quantized_weights;
 	delete[] tmpplanes.flt_quantized_decimated_quantized_weights;
 	delete[] tmpplanes.decimated_weights;
@@ -1630,8 +1652,8 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 	best_errorvals_in_1pl_2partition_mode = new float[max_blocks];
 	error_of_best_block = new float[max_blocks];
 
-	partition_indices_1plane_batch = new int[PARTITION_CANDIDATES * 3 * max_blocks];
-	partition_indices_2planes_batch = new int[PARTITION_CANDIDATES * 2 * max_blocks];
+	partition_indices_1plane_batch = new uint16_t[PARTITION_CANDIDATES * max_blocks];
+	partition_indices_2planes_batch = new uint16_t[PARTITION_CANDIDATES * max_blocks];
 
 	tmpplanes.ei1 = new endpoints_and_weights;
 	tmpplanes.ei2 = new endpoints_and_weights;
@@ -1641,6 +1663,11 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 	tmpplanes.decimated_weights = new float[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK];
 	tmpplanes.flt_quantized_decimated_quantized_weights = new float[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK];
 	tmpplanes.u8_quantized_decimated_quantized_weights = new uint8_t[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK];
+
+	fbp.partition_sequence = new uint16_t[PARTITION_COUNT * max_blocks];
+	fbp.samechroma_errors = new float[PARTITION_COUNT * max_blocks];
+	fbp.uncorr_errors = new float[PARTITION_COUNT * max_blocks];
+	fbp.separate_errors = new float[4 * PARTITION_COUNT * max_blocks];
 }
 
 void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(float mode_cutoff, int partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates)
@@ -1656,9 +1683,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(fl
 		int partition_index = 0;
 		if (partition_count > 1)
 		{
-			size_t partition_base_1plane = blk_idx * PARTITION_CANDIDATES * 3;
-			int * partition_indices_1plane = partition_indices_1plane_batch + partition_base_1plane + (partition_count - 2) * PARTITION_CANDIDATES;
-			partition_index = partition_indices_1plane[partition_offset];
+			partition_index = partition_indices_1plane_batch[blk_idx * PARTITION_CANDIDATES + partition_offset];
 		}
 
 		compress_symbolic_block_fixed_partition_1_plane(decode_mode, mode_cutoff, ewp.max_refinement_iters, xdim, ydim, zdim, partition_count,
@@ -1680,10 +1705,9 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(f
 		int partition_index = 0;
 		if (partition_count > 1)
 		{
-			size_t partition_base_2planes = blk_idx * PARTITION_CANDIDATES * 2;
-			int * partition_indices_2planes = partition_indices_2planes_batch + partition_base_2planes + (partition_count - 2) * PARTITION_CANDIDATES;
-			partition_index = partition_indices_2planes[partition_offset] & (PARTITION_COUNT - 1);
-			separate_component = partition_indices_2planes[partition_offset] >> PARTITION_BITS;
+			partition_index = partition_indices_2planes_batch[blk_idx * PARTITION_CANDIDATES + partition_offset];
+			separate_component = partition_index >> PARTITION_BITS;
+			partition_index = partition_index & (PARTITION_COUNT - 1);
 		}
 
 		compress_symbolic_block_fixed_partition_2_planes(decode_mode, mode_cutoff, ewp.max_refinement_iters, xdim, ydim, zdim, partition_count,
