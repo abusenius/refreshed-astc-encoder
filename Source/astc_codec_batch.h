@@ -2,8 +2,19 @@
 
 #define ASTC_CODEC_BATCH_INCLUDED
 
-
+#include <CL/opencl.h>
 #include "astc_codec_internals.h"
+
+#define OPENCL_KERNELS_SOURCE_PATH ".\\"
+#define OPENCL_KERNEL_FBP_FILENAME "find_best_partitioning.cl"
+#define OPENCL_COMPILER_OPTIONS "-cl-mad-enable"
+
+#define OCL_CHECK_STATUS(str) if(status != CL_SUCCESS) { fprintf(stderr, "%s, errorcode: %i %s\n", str, status, cl_errcode_to_str(status)); exit(-1); }
+#define OCL_RELEASE_OBJECT(type, name) { status = clRelease##type(name); OCL_CHECK_STATUS("Cannot release "#type" "#name); }
+
+void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode, int batch_size, int xdim, int ydim, int zdim, int plimit, astc_decode_mode decode_mode);
+void destroy_opencl();
+char const* cl_errcode_to_str(cl_int status);
 
 // how many scb candidates will be tested in each compression mode
 #define SCB_CANDIDATES 4

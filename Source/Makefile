@@ -37,6 +37,7 @@ SOURCES = \
     astc_weight_quant_xfer_tables.cpp \
     astc_compute_variance.cpp \
     astc_toplevel.cpp \
+	astc_opencl.cpp \
     mathlib.cpp \
     softfloat.cpp \
 

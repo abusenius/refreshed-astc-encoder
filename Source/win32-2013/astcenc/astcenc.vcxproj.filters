@@ -66,6 +66,9 @@
     <ClCompile Include="..\..\astc_toplevel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+	<ClCompile Include="..\..\astc_opencl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\mathlib.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

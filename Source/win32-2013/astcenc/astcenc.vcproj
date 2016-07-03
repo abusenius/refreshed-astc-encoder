@@ -257,6 +257,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\astc_opencl.cpp"
+				>
+			</File>
+			<File
 				RelativePath="..\..\astc_weight_align.cpp"
 				>
 			</File>
