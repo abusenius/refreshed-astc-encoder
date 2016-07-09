@@ -140,7 +140,7 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 	// get platform
 	status = clGetPlatformIDs(0, NULL, &numPlatforms);
 	OCL_CHECK_STATUS("Cannot get number of platforms");
-	if (numPlatforms < platform_number) {
+	if (numPlatforms <= platform_number) {
 		fprintf(stderr, "Only %i platforms found. Platform with index %i does not exists.", numPlatforms, platform_number);
 		exit(-1);
 	}
@@ -159,7 +159,7 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 	// get device
 	status = clGetDeviceIDs(opencl_platform, CL_DEVICE_TYPE_ALL, 0, NULL, &numDevices);
 	OCL_CHECK_STATUS("Cannot get number of devices");
-	if (numDevices < device_number) {
+	if (numDevices <= device_number) {
 		fprintf(stderr, "Only %i devices found. Device with index %i does not exists.", numDevices, device_number);
 		exit(-1);
 	}
@@ -180,7 +180,7 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 	OCL_CHECK_STATUS("Cannot create context");
 
 	// create program and compile kernels
-	char *source_names[] = { OPENCL_KERNEL_FBP_FILENAME	};
+	char *source_names[] = { OPENCL_KERNEL_FILES };
 #define FILE_COUNT ((int)(sizeof(source_names)/sizeof(source_names[0])))
 	char *sources[FILE_COUNT];
 	for (int i = 0; i < FILE_COUNT; i++)
@@ -195,8 +195,9 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 	OCL_CHECK_STATUS("Cannot create OpenCL program object");
 
 
-	//set compile-time constants
+	//set kernel compile-time constants
 	int texels_per_block = xdim * ydim * zdim;
+	float weight_imprecision_estim_squared = calculate_weight_imprecision(texels_per_block);
 
 	char compile_flags[1024] = "";
 	if (sizeof(void*) == 4)
@@ -206,8 +207,8 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 		strcat_s(compile_flags, 1024, " -D OCL_USE_64BIT_POINTERS");
 
 	char compileOptions[4096];
-	sprintf_s(compileOptions, 4096, "%s -I %s -D XDIM=%i -D YDIM=%i -D ZDIM=%i -D TEXELS_PER_BLOCK=%i -D PLIMIT=%i %s",
-		OPENCL_COMPILER_OPTIONS, OPENCL_KERNELS_SOURCE_PATH, xdim, ydim, zdim, texels_per_block, plimit, compile_flags);
+	sprintf_s(compileOptions, 4096, "%s -I %s -D XDIM=%i -D YDIM=%i -D ZDIM=%i -D TEXELS_PER_BLOCK=%i -D WEIGHT_IMPRECISION_ESTIM_SQUARED=%gf -D PLIMIT=%i %s",
+		OPENCL_COMPILER_OPTIONS, OPENCL_KERNELS_SOURCE_PATH, xdim, ydim, zdim, texels_per_block, weight_imprecision_estim_squared, plimit, compile_flags);
 	if (!silentmode)
 		printf("Batch size: %i\nOpenCL compiler options:\n%s\n\n", batch_size, compileOptions);
 

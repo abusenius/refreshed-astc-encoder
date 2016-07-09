@@ -1323,26 +1323,13 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 	}
 
 	int texels_per_block = xdim * ydim * zdim;
-
-	// constant used to estimate quantization error for a given partitioning;
-	// the optimal value for this constant depends on bitrate.
-	// These constants have been determined empirically.
-	float weight_imprecision_estim = 100;
-	if (texels_per_block <= 20)
-		weight_imprecision_estim = 0.03f;
-	else if (texels_per_block <= 31)
-		weight_imprecision_estim = 0.04f;
-	else if (texels_per_block <= 41)
-		weight_imprecision_estim = 0.05f;
-	else
-		weight_imprecision_estim = 0.055f;
-	fbp.weight_imprecision_estim_squared = weight_imprecision_estim * weight_imprecision_estim;
+	fbp.weight_imprecision_estim_squared = calculate_weight_imprecision(texels_per_block);
 
 	OCL_CREATE_BUFFER(fbp.uncorr_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * PARTITION_COUNT * max_batch_size, NULL);
 	OCL_CREATE_BUFFER(fbp.samechroma_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * PARTITION_COUNT * max_batch_size, NULL);
 	OCL_CREATE_BUFFER(fbp.separate_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * 4 * PARTITION_COUNT * max_batch_size, NULL);
 
-	OCL_CREATE_KERNEL(fbp, find_best_partitionings_k);
+	OCL_CREATE_KERNEL(fbp, find_best_partitionings);
 
 	allocate_buffers(max_batch_size);
 

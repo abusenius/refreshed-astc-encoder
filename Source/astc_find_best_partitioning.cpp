@@ -189,6 +189,24 @@ void compute_partition_error_color_weightings(int xdim, int ydim, int zdim, cons
 }
 
 
+float calculate_weight_imprecision(int texels_per_block)
+{
+	// constant used to estimate quantization error for a given partitioning;
+	// the optimal value for this constant depends on bitrate.
+	// These constants have been determined empirically.
+	float weight_imprecision_estim = 100;
+	if (texels_per_block <= 20)
+		weight_imprecision_estim = 0.03f;
+	else if (texels_per_block <= 31)
+		weight_imprecision_estim = 0.04f;
+	else if (texels_per_block <= 41)
+		weight_imprecision_estim = 0.05f;
+	else
+		weight_imprecision_estim = 0.055f;
+
+	return weight_imprecision_estim * weight_imprecision_estim;
+}
+
 /* 
    main function to identify the best partitioning for a given number of texels */
 

@@ -21,7 +21,7 @@ struct compress_fixed_partition_buffers
 // buffers and constants used to store intermediate data in find_best_partitionings_batch()
 struct find_best_partitionings_buffers
 {
-	cl_kernel find_best_partitionings_k;
+	cl_kernel find_best_partitionings;
 
 	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_sequence;
 	cl_mem uncorr_errors; // partitioning errors assuming uncorrellated-chrominance endpoints

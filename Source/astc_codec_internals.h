@@ -435,7 +435,6 @@ int compute_ise_bitcount(int items, quantization_method quant);
 
 void build_quantization_mode_table(void);
 extern int quantization_mode_table[17][128];
-#endif // !OPENCL_C_KERNEL
 
 
 
@@ -534,7 +533,8 @@ float compute_error_squared_rgb_single_partition(int partition_to_test, int xdim
 // for each partition, compute its color weightings.
 void compute_partition_error_color_weightings(int xdim, int ydim, int zdim, const error_weight_block * ewb, const partition_info * pi, float4 error_weightings[4], float4 color_scalefactors[4]);
 
-
+// calculate constant used to estimate quantization error for a given partitioning
+float calculate_weight_imprecision(int texels_per_block);
 
 // function to find the best partitioning for a given block.
 
@@ -566,7 +566,6 @@ typedef struct
 	int padding;
 } astc_codec_image;
 
-#ifndef OPENCL_C_KERNEL
 void destroy_image(astc_codec_image * img);
 astc_codec_image *allocate_image(int bitness, int xsize, int ysize, int zsize, int padding);
 void initialize_image(astc_codec_image * img);
@@ -680,6 +679,7 @@ typedef struct
 } endpoints_and_weights;
 
 
+#ifndef OPENCL_C_KERNEL
 void compute_endpoints_and_ideal_weights_1_plane(int xdim, int ydim, int zdim, const partition_info * pt, const imageblock * blk, const error_weight_block * ewb, endpoints_and_weights * ei);
 
 void compute_endpoints_and_ideal_weights_2_planes(int xdim, int ydim, int zdim, const partition_info * pt, const imageblock * blk, const error_weight_block * ewb, int separate_component,
@@ -717,6 +717,7 @@ int pack_color_endpoints(astc_decode_mode decode_mode, float4 color0, float4 col
 
 // unpack a pair of color endpoints from a series of integers.
 void unpack_color_endpoints(astc_decode_mode decode_mode, int format, int quantization_level, const int *input, int *rgb_hdr, int *alpha_hdr, int *nan_endpoint, ushort4 * output0, ushort4 * output1);
+#endif // !OPENCL_C_KERNEL
 
 
 typedef struct
@@ -731,7 +732,7 @@ typedef struct
 } encoding_choice_errors;
 
 
-
+#ifndef OPENCL_C_KERNEL
 void compute_encoding_choice_errors(int xdim, int ydim, int zdim, const imageblock * pb, const partition_info * pi, const error_weight_block * ewb,
 									int separate_component,	// component that is separated out in 2-plane mode, -1 in 1-plane mode
 									encoding_choice_errors * eci);
@@ -811,6 +812,6 @@ void physical_to_symbolic(int xdim, int ydim, int zdim, physical_compressed_bloc
 
 uint16_t unorm16_to_sf16(uint16_t p);
 uint16_t lns_to_sf16(uint16_t p);
-
+#endif // !OPENCL_C_KERNEL
 
 #endif
