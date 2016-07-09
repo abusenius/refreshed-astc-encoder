@@ -1376,15 +1376,6 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 		}}\
 
 
-#define SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE {\
-		if ((error_of_best_block[blk_idx] / error_weight_sum_batch[blk_idx]) < ewp.texel_avg_error_limit)\
-		{\
-			blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;\
-			total_finished_blocks++;\
-			continue;\
-		}\
-		}
-
 void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * input_image, const imageblock * blk_batch, symbolic_compressed_block * scb_batch, int cur_batch_size)
 {
 	static_assert((PARTITION_CANDIDATES % 2) == 0, "PARTITION_CANDIDATES should be even number");
@@ -1508,7 +1499,11 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 			FIND_BEST_SCB_CANDIDATES(0);
 			error_of_best_block[blk_idx] *= errorval_mult[i];
 			best_errorvals_in_1pl_1partition_mode[blk_idx] = error_of_best_block[blk_idx];
-			SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE;
+			if ((error_of_best_block[blk_idx] / error_weight_sum_batch[blk_idx]) < ewp.texel_avg_error_limit)
+			{
+				blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+				total_finished_blocks++;
+			};
 		}
 
 		if (total_finished_blocks == batch_size)
@@ -1563,7 +1558,11 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 				continue;
 
 			FIND_BEST_SCB_CANDIDATES(i + 1);
-			SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE;
+			if ((error_of_best_block[blk_idx] / error_weight_sum_batch[blk_idx]) < ewp.texel_avg_error_limit)
+			{
+				blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+				total_finished_blocks++;
+			};
 		}
 
 		if (total_finished_blocks == batch_size)
@@ -1589,7 +1588,11 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 
 				FIND_BEST_SCB_CANDIDATES(4 * (partition_count - 2) + 5 + i);
 				best_errorvals_in_1pl_2partition_mode[blk_idx] = MIN(best_errorval_in_mode, best_errorvals_in_1pl_2partition_mode[blk_idx]);
-				SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE;
+				if ((error_of_best_block[blk_idx] / error_weight_sum_batch[blk_idx]) < ewp.texel_avg_error_limit)
+				{
+					blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+					total_finished_blocks++;
+				};
 			}
 		}
 
@@ -1625,7 +1628,11 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 					continue;
 
 				FIND_BEST_SCB_CANDIDATES(4 * (partition_count - 2) + 5 + 2 + i);
-				SET_blk_finished_IF_COMPRESSED_WELL_ENOUGH_AND_CONTINUE;
+				if ((error_of_best_block[blk_idx] / error_weight_sum_batch[blk_idx]) < ewp.texel_avg_error_limit)
+				{
+					blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+					total_finished_blocks++;
+				};
 			}
 		}
 	}
