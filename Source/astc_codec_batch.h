@@ -5,20 +5,6 @@
 #include "astc_codec_internals.h"
 #include "astc_opencl.h"
 
-// how many scb candidates will be tested in each compression mode
-#define SCB_CANDIDATES 4
-
-// how many partitions will be tested for each multipartition mode
-#define PARTITION_CANDIDATES 2
-
-// flags used to skip some compression modes
-#define BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF 1
-#define BLOCK_STAT_LOWEST_CORREL_CUTOFF (1 << 1)
-#define BLOCK_STAT_NORMAL_MAP (1 << 2)
-#define BLOCK_STAT_NO_ALPHA (1 << 3)
-#define BLOCK_STAT_GREYSCALE (1 << 4)
-#define BLOCK_STAT_SKIP_ALL (1 << 5)
-
 // buffers used to store intermediate data in compress_symbolic_block_fixed_partition_*()
 struct compress_fixed_partition_buffers
 {
@@ -35,7 +21,7 @@ struct compress_fixed_partition_buffers
 // buffers and constants used to store intermediate data in find_best_partitionings_batch()
 struct find_best_partitionings_buffers
 {
-	cl_kernel find_best_partitionings_2planes;
+	cl_kernel find_best_partitionings_k;
 
 	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_sequence;
 	cl_mem uncorr_errors; // partitioning errors assuming uncorrellated-chrominance endpoints

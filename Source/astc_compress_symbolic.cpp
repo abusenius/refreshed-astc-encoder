@@ -1342,7 +1342,7 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 	OCL_CREATE_BUFFER(fbp.samechroma_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * PARTITION_COUNT * max_batch_size, NULL);
 	OCL_CREATE_BUFFER(fbp.separate_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * 4 * PARTITION_COUNT * max_batch_size, NULL);
 
-	OCL_CREATE_KERNEL(fbp, find_best_partitionings_2planes);
+	OCL_CREATE_KERNEL(fbp, find_best_partitionings_k);
 
 	allocate_buffers(max_batch_size);
 

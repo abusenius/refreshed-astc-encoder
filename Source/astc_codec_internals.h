@@ -37,6 +37,20 @@
 
 #define astc_isnan(p) ((p)!=(p))
 
+// how many scb candidates will be tested in each compression mode
+#define SCB_CANDIDATES 4
+
+// how many partitions will be tested for each multipartition mode
+#define PARTITION_CANDIDATES 2
+
+// flags used to skip some compression modes
+#define BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF 1
+#define BLOCK_STAT_LOWEST_CORREL_CUTOFF (1 << 1)
+#define BLOCK_STAT_NORMAL_MAP (1 << 2)
+#define BLOCK_STAT_NO_ALPHA (1 << 3)
+#define BLOCK_STAT_GREYSCALE (1 << 4)
+#define BLOCK_STAT_SKIP_ALL (1 << 5)
+
 // ASTC parameters
 #define MAX_TEXELS_PER_BLOCK 216
 #define MAX_WEIGHTS_PER_BLOCK 64

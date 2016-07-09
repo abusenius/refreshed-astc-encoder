@@ -206,8 +206,8 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 		strcat_s(compile_flags, 1024, " -D OCL_USE_64BIT_POINTERS");
 
 	char compileOptions[4096];
-	sprintf_s(compileOptions, 4096, "%s -I %s -D XDIM=%i -D YDIM=%i -D ZDIM=%i -D TEXELS_PER_BLOCK=%i -D PLIMIT=%i -D FBP_PARTITION_CANDIDATES=%i %s",
-		OPENCL_COMPILER_OPTIONS, OPENCL_KERNELS_SOURCE_PATH, xdim, ydim, zdim, texels_per_block, plimit, PARTITION_CANDIDATES, compile_flags);
+	sprintf_s(compileOptions, 4096, "%s -I %s -D XDIM=%i -D YDIM=%i -D ZDIM=%i -D TEXELS_PER_BLOCK=%i -D PLIMIT=%i %s",
+		OPENCL_COMPILER_OPTIONS, OPENCL_KERNELS_SOURCE_PATH, xdim, ydim, zdim, texels_per_block, plimit, compile_flags);
 	if (!silentmode)
 		printf("Batch size: %i\nOpenCL compiler options:\n%s\n\n", batch_size, compileOptions);
 
