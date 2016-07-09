@@ -1309,6 +1309,11 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 	: max_batch_size(_max_batch_size), xdim(_xdim), ydim(_ydim), zdim(_zdim), decode_mode(_decode_mode)
 {
 	ewp = *_ewp;
+
+	cl_int status;
+	opencl_queue = clCreateCommandQueue(opencl_context, opencl_device, 0, &status);
+	OCL_CHECK_STATUS("Unable to create command queue");
+
 	const partition_statistics * pstat;
 	
 	for (size_t pcount = 2; pcount <= 4; pcount++)
@@ -1333,7 +1338,15 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 		weight_imprecision_estim = 0.055f;
 	fbp.weight_imprecision_estim_squared = weight_imprecision_estim * weight_imprecision_estim;
 
+	OCL_CREATE_BUFFER(fbp.uncorr_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * PARTITION_COUNT * max_batch_size, NULL);
+	OCL_CREATE_BUFFER(fbp.samechroma_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * PARTITION_COUNT * max_batch_size, NULL);
+	OCL_CREATE_BUFFER(fbp.separate_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * 4 * PARTITION_COUNT * max_batch_size, NULL);
+
+	OCL_CREATE_KERNEL(fbp, find_best_partitionings_2planes);
+
 	allocate_buffers(max_batch_size);
+
+	clFinish(opencl_queue);
 }
 
 #define FIND_BEST_SCB_CANDIDATES(modesel) {best_errorval_in_mode = 1e30f;\
@@ -1558,7 +1571,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 	// find best blocks for 2, 3 and 4 partitions
 	for (int partition_count = 2; partition_count <= 4; partition_count++)
 	{
-		find_best_partitionings_batch(partition_count, blk_batch, partition_indices_1plane_batch, partition_indices_2planes_batch);
+		find_best_partitionings_batch(partition_count, blk_batch);
 
 		skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
 		for (i = 0; i < 2; i++)
@@ -1616,10 +1629,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 
 SymbolicBatchCompressor::~SymbolicBatchCompressor()
 {
-	delete[] fbp.separate_errors;
-	delete[] fbp.uncorr_errors;
-	delete[] fbp.samechroma_errors;
-	delete[] fbp.partition_sequence;
+	cl_int status;
 
 	delete[] tmpplanes.u8_quantized_decimated_quantized_weights;
 	delete[] tmpplanes.flt_quantized_decimated_quantized_weights;
@@ -1630,9 +1640,6 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 	delete tmpplanes.ei2;
 	delete tmpplanes.ei1;
 
-	delete[] partition_indices_2planes_batch;
-	delete[] partition_indices_1plane_batch;
-
 	delete[] error_of_best_block;
 	delete[] best_errorvals_in_1pl_2partition_mode;
 	delete[] best_errorvals_in_1pl_1partition_mode;
@@ -1640,6 +1647,8 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 	delete[] blk_stat;
 	delete[] scb_candidates;
 	delete[] ewb_batch;
+
+	OCL_RELEASE_OBJECT(CommandQueue, opencl_queue);
 }
 
 void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
@@ -1652,8 +1661,8 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 	best_errorvals_in_1pl_2partition_mode = new float[max_blocks];
 	error_of_best_block = new float[max_blocks];
 
-	partition_indices_1plane_batch = new uint16_t[PARTITION_CANDIDATES * max_blocks];
-	partition_indices_2planes_batch = new uint16_t[PARTITION_CANDIDATES * max_blocks];
+	partition_indices_1plane_batch.create_buffer(CL_MEM_WRITE_ONLY, PARTITION_CANDIDATES * max_blocks, opencl_queue);
+	partition_indices_2planes_batch.create_buffer(CL_MEM_WRITE_ONLY, PARTITION_CANDIDATES * max_blocks, opencl_queue);
 
 	tmpplanes.ei1 = new endpoints_and_weights;
 	tmpplanes.ei2 = new endpoints_and_weights;
@@ -1664,10 +1673,7 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 	tmpplanes.flt_quantized_decimated_quantized_weights = new float[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK];
 	tmpplanes.u8_quantized_decimated_quantized_weights = new uint8_t[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK];
 
-	fbp.partition_sequence = new uint16_t[PARTITION_COUNT * max_blocks];
-	fbp.samechroma_errors = new float[PARTITION_COUNT * max_blocks];
-	fbp.uncorr_errors = new float[PARTITION_COUNT * max_blocks];
-	fbp.separate_errors = new float[4 * PARTITION_COUNT * max_blocks];
+	fbp.partition_sequence.create_buffer(CL_MEM_READ_ONLY, max_blocks * PARTITION_COUNT, opencl_queue);
 }
 
 void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(float mode_cutoff, int partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates)

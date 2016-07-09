@@ -291,6 +291,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\astc_opencl.h"
+				>
+			</File>
+			<File
 				RelativePath="..\..\astc_codec_batch.h"
 				>
 			</File>

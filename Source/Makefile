@@ -44,6 +44,7 @@ SOURCES = \
 
 HEADERS = \
     astc_codec_internals.h \
+	astc_opencl.h \
 	astc_codec_batch.h \
     mathlib.h \
     softfloat.h \

@@ -2,19 +2,8 @@
 
 #define ASTC_CODEC_BATCH_INCLUDED
 
-#include <CL/opencl.h>
 #include "astc_codec_internals.h"
-
-#define OPENCL_KERNELS_SOURCE_PATH ".\\"
-#define OPENCL_KERNEL_FBP_FILENAME "find_best_partitioning.cl"
-#define OPENCL_COMPILER_OPTIONS "-cl-mad-enable"
-
-#define OCL_CHECK_STATUS(str) if(status != CL_SUCCESS) { fprintf(stderr, "%s, errorcode: %i %s\n", str, status, cl_errcode_to_str(status)); exit(-1); }
-#define OCL_RELEASE_OBJECT(type, name) { status = clRelease##type(name); OCL_CHECK_STATUS("Cannot release "#type" "#name); }
-
-void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode, int batch_size, int xdim, int ydim, int zdim, int plimit, astc_decode_mode decode_mode);
-void destroy_opencl();
-char const* cl_errcode_to_str(cl_int status);
+#include "astc_opencl.h"
 
 // how many scb candidates will be tested in each compression mode
 #define SCB_CANDIDATES 4
@@ -46,10 +35,12 @@ struct compress_fixed_partition_buffers
 // buffers and constants used to store intermediate data in find_best_partitionings_batch()
 struct find_best_partitionings_buffers
 {
-	uint16_t * partition_sequence;
-	float * uncorr_errors; // partitioning errors assuming uncorrellated-chrominance endpoints
-	float * samechroma_errors; // partitioning errors assuming same-chrominance endpoints
-	float * separate_errors; // partitioning errors assuming that one of the color channels is uncorrellated from all the other ones
+	cl_kernel find_best_partitionings_2planes;
+
+	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_sequence;
+	cl_mem uncorr_errors; // partitioning errors assuming uncorrellated-chrominance endpoints
+	cl_mem samechroma_errors; // partitioning errors assuming same-chrominance endpoints
+	cl_mem separate_errors; // partitioning errors assuming that one of the color channels is uncorrellated from all the other ones
 
 	float weight_imprecision_estim_squared;
 	uint16_t partition_search_limits[5];
@@ -70,6 +61,8 @@ private:
 	astc_decode_mode decode_mode;
 	error_weighting_params ewp;
 
+	cl_command_queue opencl_queue;
+
 	uint8_t * blk_stat; //used to skip some compression modes
 	
 	// buffers to store intermediate data during encoding
@@ -80,8 +73,8 @@ private:
 	float * error_of_best_block;
 	error_weight_block * ewb_batch;
 	symbolic_compressed_block * scb_candidates;
-	uint16_t * partition_indices_1plane_batch;
-	uint16_t * partition_indices_2planes_batch;
+	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_indices_1plane_batch;
+	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_indices_2planes_batch;
 
 	// buffers used in compress_symbolic_batch_fixed_partition_*()
 	compress_fixed_partition_buffers tmpplanes;
@@ -90,7 +83,7 @@ private:
 	void allocate_buffers(int max_blocks);
 	void compress_symbolic_batch_fixed_partition_1_plane(float mode_cutoff, int partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates);
 	void compress_symbolic_batch_fixed_partition_2_planes(float mode_cutoff, int partition_count, int partition_offset, int separate_component, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates, uint8_t skip_mode);
-	void find_best_partitionings_batch(int partition_count, const imageblock * blk_batch, uint16_t * partition_indices_1plane_batch, uint16_t * partition_indices_2planes_batch);
+	void find_best_partitionings_batch(int partition_count, const imageblock * blk_batch);
 	void find_best_partitionings(int partition_search_limit, int partition_count, const imageblock * pb, const error_weight_block * ewb, uint16_t *best_partitions_single_weight_plane, uint16_t *best_partitions_dual_weight_planes);
 };
 

@@ -726,7 +726,7 @@ void SymbolicBatchCompressor::find_best_partitionings(int partition_search_limit
 }
 
 
-void SymbolicBatchCompressor::find_best_partitionings_batch(int partition_count, const imageblock * blk_batch, uint16_t * partition_indices_1plane_batch, uint16_t * partition_indices_2planes_batch)
+void SymbolicBatchCompressor::find_best_partitionings_batch(int partition_count, const imageblock * blk_batch)
 {
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 	{
@@ -736,8 +736,8 @@ void SymbolicBatchCompressor::find_best_partitionings_batch(int partition_count,
 		const imageblock * blk = &blk_batch[blk_idx];
 		error_weight_block *ewb = &ewb_batch[blk_idx];
 
-		uint16_t * partition_indices_1plane = partition_indices_1plane_batch + blk_idx * PARTITION_CANDIDATES;
-		uint16_t * partition_indices_2planes = partition_indices_2planes_batch + blk_idx * PARTITION_CANDIDATES;
+		uint16_t * partition_indices_1plane = &partition_indices_1plane_batch[0] + blk_idx * PARTITION_CANDIDATES;
+		uint16_t * partition_indices_2planes = &partition_indices_2planes_batch[0] + blk_idx * PARTITION_CANDIDATES;
 		find_best_partitionings(fbp.partition_search_limits[partition_count], partition_count, blk, ewb,
 			partition_indices_1plane, partition_indices_2planes);
 	}

@@ -1,19 +1,21 @@
 #include "astc_codec_batch.h"
 
-
 #include <stdio.h>
+#include <stdlib.h>
 
 cl_platform_id opencl_platform;
 cl_device_id opencl_device;
 cl_program opencl_program;
 cl_context opencl_context;
 
-
 static cl_int printDeviceInfo(cl_device_id device)
 {
 	cl_int status = CL_SUCCESS;
-	char buf[512];
-	cl_uint clui;
+	char buf[512], buf2[512];
+	cl_uint clui, clui2;
+	cl_ulong clul, clul2;
+	cl_device_local_mem_type memtype;
+	char *memtype_str[4] = {"none", "local", "global", "unknown"};
 	size_t  clsz;
 
 	status = clGetDeviceInfo(device, CL_DEVICE_VENDOR, sizeof(buf), buf, NULL);
@@ -25,20 +27,34 @@ static cl_int printDeviceInfo(cl_device_id device)
 	status = clGetDeviceInfo(device, CL_DRIVER_VERSION, sizeof(buf), buf, NULL);
 	if (status == CL_SUCCESS) printf("\t\tDriver Version: %s\n", buf);
 
+	status = clGetDeviceInfo(device, CL_DEVICE_VERSION, sizeof(buf), buf, NULL);
+	status = clGetDeviceInfo(device, CL_DEVICE_OPENCL_C_VERSION, sizeof(buf2), buf2, NULL);
+	if (status == CL_SUCCESS) printf("\t\tDev/OpenCL C ver: %s/%s\n", buf, buf2);
+
 	status = clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(cl_uint), &clui, NULL);
-	if (status == CL_SUCCESS) printf("\t\tUnits: %i\n", clui);
+	status |= clGetDeviceInfo(device, CL_DEVICE_PARTITION_MAX_SUB_DEVICES, sizeof(cl_uint), &clui2, NULL);
+	if (status == CL_SUCCESS) printf("\t\tUnits/MaxPartitions: %u / %u\n", clui, clui2);
 
 	status = clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, sizeof(cl_uint), &clui, NULL);
-	if (status == CL_SUCCESS) printf("\t\tMax dim: %i\n", clui);
+	if (status == CL_SUCCESS) printf("\t\tMax dim: %u\n", clui);
 
 	status = clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &clsz, NULL);
-	if (status == CL_SUCCESS) printf("\t\tWG size: %i\n", clsz);
+	if (status == CL_SUCCESS) printf("\t\tWG size: %u\n", (cl_uint)clsz);
 
 	status = clGetDeviceInfo(device, CL_DEVICE_MAX_CLOCK_FREQUENCY, sizeof(cl_uint), &clui, NULL);
-	if (status == CL_SUCCESS) printf("\t\tFreqs: %i\n", clui);
+	if (status == CL_SUCCESS) printf("\t\tFreqs: %u\n", clui);
 
-	status = clGetDeviceInfo(device, CL_DEVICE_PARTITION_MAX_SUB_DEVICES, sizeof(cl_uint), &clui, NULL);
-	if (status == CL_SUCCESS) printf("\t\tMaxPartitions: %i\n", clsz);
+	status = clGetDeviceInfo(device, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(cl_ulong), &clul, NULL);
+	status |= clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &clul2, NULL);
+	if (status == CL_SUCCESS) printf("\t\tGlobal Mem size/max alloc: %u MiB/ %u MiB\n", (cl_uint)(clul2>>20), (cl_uint)(clul >> 20));
+
+	status = clGetDeviceInfo(device, CL_DEVICE_LOCAL_MEM_TYPE, sizeof(cl_device_local_mem_type), &memtype, NULL);
+	status |= clGetDeviceInfo(device, CL_DEVICE_LOCAL_MEM_SIZE, sizeof(cl_ulong), &clul, NULL);
+	if (status == CL_SUCCESS) printf("\t\tLoacl Mem size(type): %u KiB (%s)\n", (cl_uint)(clul >> 10), memtype_str[MIN(memtype, 3)]);
+
+	status = clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_CACHELINE_SIZE, sizeof(cl_uint), &clui, NULL);
+	status |= clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_CACHE_SIZE, sizeof(cl_ulong), &clul, NULL);
+	if (status == CL_SUCCESS) printf("\t\tGlobal cache size/line size: %u KiB / %u B\n", (cl_uint)(clul >> 10), clui);
 
 	return CL_SUCCESS;
 }
@@ -102,7 +118,7 @@ static cl_int readSource(const char *sourcePath, const char *sourceFilename, cha
 
 	err = fread(source, 1, size, fp);
 	if (err != size) {
-		fprintf(stderr, "only %d bytes read\n", err);
+		fprintf(stderr, "only %u bytes read\n", (unsigned int)err);
 		delete[] source;
 		return -1;
 	}
