@@ -20,6 +20,10 @@ extern cl_context opencl_context;
 #define OCL_RELEASE_OBJECT(type, name) { status = clRelease##type(name); OCL_CHECK_STATUS("Cannot release "#type" "#name); }
 #define OCL_CREATE_BUFFER(name, flags, size, source) { name = clCreateBuffer(opencl_context, flags, size, source, &status);\
 								OCL_CHECK_STATUS("Cannot create buffer "#name); }
+#define OCL_WRITE_BUFFER(name, size, src) { status = clEnqueueWriteBuffer(opencl_queue, name, OCL_IS_BLOCKING, 0, size, src, 0, NULL, NULL);\
+								OCL_CHECK_STATUS("Cannot copy data to bufer "#name); }
+#define OCL_READ_BUFFER(name, size, dest) { status = clEnqueueReadBuffer(opencl_queue, name, OCL_IS_BLOCKING, 0, size, dest, 0, NULL, NULL);\
+								OCL_CHECK_STATUS("Cannot read data from bufer "#name); }
 #define OCL_MAP_BUFFER(name, ptr_type, ptr, flags, size) { ptr = static_cast<ptr_type> (clEnqueueMapBuffer(opencl_queue, name, OCL_IS_BLOCKING, flags, 0, size, 0, NULL, NULL, &status)); \
 								OCL_CHECK_STATUS("Error in clEnqueueMapBuffer "#name); }
 #define OCL_UNMAP_BUFFER(name, ptr) { status = clEnqueueUnmapMemObject(opencl_queue, name, ptr, 0, NULL, NULL);\
@@ -28,6 +32,9 @@ extern cl_context opencl_context;
 
 #define OCL_CREATE_KERNEL(module, name) { module.##name = clCreateKernel(opencl_program, #name, &status);\
 								OCL_CHECK_STATUS("Cannot create kernel "#name); }
+#define OCL_SET_KERNEL_ARG(kernname, seq, arg) { status = clSetKernelArg(kernname, seq, sizeof(arg), &arg);\
+								OCL_CHECK_STATUS("Cannot set argument "#seq" ("#arg") for kernel "#kernname); }
+
 
 
 void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode, int batch_size, int xdim, int ydim, int zdim, int plimit, astc_decode_mode decode_mode);

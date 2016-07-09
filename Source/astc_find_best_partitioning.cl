@@ -135,7 +135,7 @@ void find_best_partitionings(__global const uint8_t *blk_stat, __global const im
 	__global const imageblock *pb = &blk[gid];
 
 	int i, j;
-	uint16_t partition_sequence[PARTITION_COUNT];
+	__global const uint16_t *partition_sequence = partition_sequence_batch + gid * PARTITION_COUNT;
 
 	// partitioning errors assuming uncorrellated-chrominance endpoints
 	float uncorr_errors[PARTITION_COUNT];

@@ -24,6 +24,7 @@ struct find_best_partitionings_buffers
 	cl_kernel find_best_partitionings;
 
 	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_sequence;
+	cl_mem ptab2, ptab3, ptab4;
 	cl_mem uncorr_errors; // partitioning errors assuming uncorrellated-chrominance endpoints
 	cl_mem samechroma_errors; // partitioning errors assuming same-chrominance endpoints
 	cl_mem separate_errors; // partitioning errors assuming that one of the color channels is uncorrellated from all the other ones
@@ -49,7 +50,8 @@ private:
 
 	cl_command_queue opencl_queue;
 
-	uint8_t * blk_stat; //used to skip some compression modes
+	ocl_buffer<uint8_t, ocl_buffer_type::DEVICE> blk_stat; //used to skip some compression modes
+	cl_mem blk_buf;
 	
 	// buffers to store intermediate data during encoding
 	// buffers used in compress_symbolic_batch()
@@ -57,7 +59,7 @@ private:
 	float * best_errorvals_in_1pl_1partition_mode;
 	float * best_errorvals_in_1pl_2partition_mode;
 	float * error_of_best_block;
-	error_weight_block * ewb_batch;
+	ocl_buffer<error_weight_block, ocl_buffer_type::DEVICE> ewb_batch;
 	symbolic_compressed_block * scb_candidates;
 	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_indices_1plane_batch;
 	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_indices_2planes_batch;

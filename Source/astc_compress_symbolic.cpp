@@ -1325,13 +1325,30 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 	int texels_per_block = xdim * ydim * zdim;
 	fbp.weight_imprecision_estim_squared = calculate_weight_imprecision(texels_per_block);
 
+	allocate_buffers(max_batch_size);
+
+	OCL_CREATE_BUFFER(blk_buf, CL_MEM_READ_ONLY, sizeof(imageblock) * max_batch_size, NULL);
+	
 	OCL_CREATE_BUFFER(fbp.uncorr_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * PARTITION_COUNT * max_batch_size, NULL);
 	OCL_CREATE_BUFFER(fbp.samechroma_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * PARTITION_COUNT * max_batch_size, NULL);
 	OCL_CREATE_BUFFER(fbp.separate_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * 4 * PARTITION_COUNT * max_batch_size, NULL);
+	OCL_CREATE_BUFFER(fbp.ptab2, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
+	OCL_CREATE_BUFFER(fbp.ptab3, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
+	OCL_CREATE_BUFFER(fbp.ptab4, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
+	OCL_WRITE_BUFFER(fbp.ptab2, sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, 2));
+	OCL_WRITE_BUFFER(fbp.ptab3, sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, 3));
+	OCL_WRITE_BUFFER(fbp.ptab4, sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, 4));
 
 	OCL_CREATE_KERNEL(fbp, find_best_partitionings);
-
-	allocate_buffers(max_batch_size);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 0, blk_stat.dev_buf);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 1, blk_buf);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 2, fbp.partition_sequence);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 3, partition_indices_1plane_batch.dev_buf);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 4, partition_indices_2planes_batch.dev_buf);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 5, ewb_batch.dev_buf);
+	//OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 6, fbp.ptab2);
+	//OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 7, fbp.partition_search_limits[2]);
+	//OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 8, 2);
 
 	clFinish(opencl_queue);
 }
@@ -1374,7 +1391,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 	size_t total_finished_blocks = 0;
 	batch_size = cur_batch_size;
 
-	memset(blk_stat, BLOCK_STAT_SKIP_ALL, sizeof(uint8_t) * batch_size);
+	memset(blk_stat.host_ptr, BLOCK_STAT_SKIP_ALL, sizeof(uint8_t) * batch_size);
 
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 	{
@@ -1631,18 +1648,25 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 	delete[] best_errorvals_in_1pl_2partition_mode;
 	delete[] best_errorvals_in_1pl_1partition_mode;
 	delete[] error_weight_sum_batch;
-	delete[] blk_stat;
 	delete[] scb_candidates;
-	delete[] ewb_batch;
+
+	OCL_RELEASE_OBJECT(Kernel, fbp.find_best_partitionings);
+	OCL_RELEASE_OBJECT(MemObject, fbp.ptab4);
+	OCL_RELEASE_OBJECT(MemObject, fbp.ptab3);
+	OCL_RELEASE_OBJECT(MemObject, fbp.ptab2);
+	OCL_RELEASE_OBJECT(MemObject, fbp.separate_errors);
+	OCL_RELEASE_OBJECT(MemObject, fbp.samechroma_errors);
+	OCL_RELEASE_OBJECT(MemObject, fbp.uncorr_errors);
+	OCL_RELEASE_OBJECT(MemObject, blk_buf);
 
 	OCL_RELEASE_OBJECT(CommandQueue, opencl_queue);
 }
 
 void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 {
-	ewb_batch = new error_weight_block[max_blocks];
+	ewb_batch.create_buffer(CL_MEM_READ_ONLY, max_blocks, opencl_queue);
 	scb_candidates = new symbolic_compressed_block[SCB_CANDIDATES * max_blocks];
-	blk_stat = new uint8_t[max_blocks];
+	blk_stat.create_buffer(CL_MEM_READ_ONLY, max_blocks, opencl_queue);
 	error_weight_sum_batch = new float[max_blocks];
 	best_errorvals_in_1pl_1partition_mode = new float[max_blocks];
 	best_errorvals_in_1pl_2partition_mode = new float[max_blocks];
