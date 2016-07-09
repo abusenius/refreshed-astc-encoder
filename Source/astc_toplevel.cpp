@@ -452,8 +452,6 @@ void encode_astc_image(const astc_codec_image * input_image, astc_codec_image * 
 	get_block_size_descriptor(xdim, ydim, zdim);
 	get_partition_table(xdim, ydim, zdim, 0);
 
-	init_opencl(0, 0, 0, batch_size, xdim, ydim, zdim, ewp->partition_search_limit, decode_mode);
-
 	encode_astc_image_info *ai = new encode_astc_image_info[threadcount];
 	for (i = 0; i < threadcount; i++)
 	{
@@ -1166,6 +1164,9 @@ int main(int argc, char **argv)
 				"      Displays time taken for entire run, together with time taken for\n"
 				"      coding step only. If requested, this is output even in -silentmode.\n"
 				"\n"
+				" -ocl <platform> <device>\n"
+				"      Set OpenCL device that is used to accelerate encoding.\n"
+				"\n"
 				" -showpsnr\n"
 				"      In test mode (-t), displays PSNR difference between input and output\n"
 				"      images, in dB, even if -silentmode is specified. Works for LDR images\n"
@@ -1357,6 +1358,8 @@ int main(int argc, char **argv)
 	int high_fstop = 10;
 
 	int batch_size = 128;
+	int opencl_plat_id = 0;
+	int opencl_dev_id = 0;
 
 	// parse the commandline's encoding options.
 	int argidx;
@@ -2096,6 +2099,18 @@ int main(int argc, char **argv)
 			dblimit_set_by_user = 1;
 		}
 
+		else if (!strcmp(argv[argidx], "-ocl"))
+		{
+			argidx += 3;
+			if (argidx > argc)
+			{
+				printf("-ocl switch with less than 2 arguments\n");
+				exit(1);
+			}
+			opencl_plat_id = atoi(argv[argidx - 2]);
+			opencl_dev_id = atoi(argv[argidx - 1]);
+		}
+
 		else if (!strcmp(argv[argidx], "-mpsnr"))
 		{
 			argidx += 3;
@@ -2482,6 +2497,8 @@ int main(int argc, char **argv)
 
 
 	start_coding_time = get_time();
+	init_opencl(opencl_plat_id, opencl_dev_id, silentmode, batch_size, xdim, ydim, zdim, ewp.partition_search_limit, decode_mode);
+
 
 	if (opmode == 1)
 		output_image = load_astc_file(input_filename, bitness, decode_mode, swz_decode);
