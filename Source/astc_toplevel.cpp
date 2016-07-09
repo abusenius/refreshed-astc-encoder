@@ -297,6 +297,7 @@ struct encode_astc_image_info
 	int *threads_completed;
 	const astc_codec_image *input_image;
 	astc_codec_image *output_image;
+	SymbolicBatchCompressor *compressor;
 };
 
 
@@ -320,6 +321,7 @@ void *encode_astc_image_threadfunc(void *vblk)
 	int *threads_completed = blk->threads_completed;
 	const astc_codec_image *input_image = blk->input_image;
 	astc_codec_image *output_image = blk->output_image;
+	SymbolicBatchCompressor *symbolic_compressor = blk->compressor;
 
 	imageblock *pb_batch = new imageblock[batchsize];
 	symbolic_compressed_block *scb_batch = new symbolic_compressed_block[batchsize];
@@ -337,7 +339,6 @@ void *encode_astc_image_threadfunc(void *vblk)
 
 	int owns_progress_counter = 0;
 
-	SymbolicBatchCompressor symbolic_compressor(batchsize, xdim, ydim, zdim, decode_mode, ewp);
 
 #define NEXT_BLOCK_IN_BATCH(dx, dy, dz) if (++dx >= xblocks){ dx = 0; if (++dy >= yblocks){ dy = 0; dz++; }	}
 
@@ -362,7 +363,7 @@ void *encode_astc_image_threadfunc(void *vblk)
 							NEXT_BLOCK_IN_BATCH(dx, dy, dz);
 						}
 
-						symbolic_compressor.compress_symbolic_batch(input_image, pb_batch, scb_batch, cur_batch_size);
+						symbolic_compressor->compress_symbolic_batch(input_image, pb_batch, scb_batch, cur_batch_size);
 
 						dx = x; dy = y; dz = z;
 						for (int block_in_batch = 0; block_in_batch < cur_batch_size; block_in_batch++) {
@@ -472,9 +473,12 @@ void encode_astc_image(const astc_codec_image * input_image, astc_codec_image * 
 		ai[i].threads_completed = threads_completed;
 		ai[i].input_image = input_image;
 		ai[i].output_image = output_image;
+		ai[i].compressor = new SymbolicBatchCompressor(batch_size, xdim, ydim, zdim, decode_mode, ewp);
 		counters[i] = 0;
 		threads_completed[i] = 0;
 	}
+
+	start_coding_time = get_time();
 
 	if (threadcount == 1)
 		encode_astc_image_threadfunc(&ai[0]);
@@ -489,6 +493,10 @@ void encode_astc_image(const astc_codec_image * input_image, astc_codec_image * 
 		delete[]threads;
 	}
 
+	for (i = 0; i < threadcount; i++)
+	{
+		delete ai[i].compressor;
+	}
 	delete[]ai;
 	delete[]counters;
 	delete[]threads_completed;
