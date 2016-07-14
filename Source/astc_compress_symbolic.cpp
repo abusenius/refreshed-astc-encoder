@@ -1332,24 +1332,26 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 	OCL_CREATE_BUFFER(fbp.uncorr_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * PARTITION_COUNT * max_batch_size, NULL);
 	OCL_CREATE_BUFFER(fbp.samechroma_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * PARTITION_COUNT * max_batch_size, NULL);
 	OCL_CREATE_BUFFER(fbp.separate_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * 4 * PARTITION_COUNT * max_batch_size, NULL);
-	OCL_CREATE_BUFFER(fbp.ptab2, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
-	OCL_CREATE_BUFFER(fbp.ptab3, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
-	OCL_CREATE_BUFFER(fbp.ptab4, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
-	OCL_WRITE_BUFFER(fbp.ptab2, sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, 2));
-	OCL_WRITE_BUFFER(fbp.ptab3, sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, 3));
-	OCL_WRITE_BUFFER(fbp.ptab4, sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, 4));
+	for (size_t pcount = 2; pcount <= 4; pcount++)
+	{
+		OCL_CREATE_BUFFER(fbp.ptab[pcount], CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
+		OCL_WRITE_BUFFER(fbp.ptab[pcount], sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, pcount));
+	}
 
 	OCL_CREATE_KERNEL(fbp, find_best_partitionings);
-	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 0, blk_stat.dev_buf);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 0, blk_stat);
 	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 1, blk_buf);
 	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 2, fbp.partition_sequence);
-	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 3, partition_indices_1plane_batch.dev_buf);
-	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 4, partition_indices_2planes_batch.dev_buf);
-	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 5, ewb_batch.dev_buf);
-	//OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 6, fbp.ptab2);
-	//OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 7, fbp.partition_search_limits[2]);
-	//OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 8, 2);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 3, partition_indices_1plane_batch);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 4, partition_indices_2planes_batch);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 5, ewb_batch);
 
+	idebug.create_buffer(CL_MEM_READ_WRITE, max_batch_size * PARTITION_COUNT, opencl_queue);
+	fdebug.create_buffer(CL_MEM_READ_WRITE, max_batch_size * PARTITION_COUNT, opencl_queue);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 9, idebug);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 10, fdebug);
+
+	
 	clFinish(opencl_queue);
 }
 
@@ -1378,9 +1380,13 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 
 void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * input_image, const imageblock * blk_batch, symbolic_compressed_block * scb_batch, int cur_batch_size)
 {
+	cl_int status;
 	static_assert((PARTITION_CANDIDATES % 2) == 0, "PARTITION_CANDIDATES should be even number");
 	size_t total_finished_blocks = 0;
 	batch_size = cur_batch_size;
+
+	OCL_WRITE_BUFFER(blk_buf, sizeof(imageblock) * batch_size, blk_batch);
+
 
 	memset(blk_stat.host_ptr, BLOCK_STAT_SKIP_ALL, sizeof(uint8_t) * batch_size);
 
@@ -1471,6 +1477,8 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 	if ((error_of_best_block / error_weight_sum) < ewp.texel_avg_error_limit)
 		goto END_OF_TESTS;
 #endif
+
+	ewb_batch.write_to_device();
 
 
 	float mode_cutoff = ewp.block_mode_cutoff;
@@ -1574,6 +1582,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 	// find best blocks for 2, 3 and 4 partitions
 	for (int partition_count = 2; partition_count <= 4; partition_count++)
 	{
+		find_best_partitionings_batch_ocl(partition_count, blk_batch);
 		find_best_partitionings_batch(partition_count, blk_batch);
 
 		skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
@@ -1658,9 +1667,10 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 	delete[] scb_candidates;
 
 	OCL_RELEASE_OBJECT(Kernel, fbp.find_best_partitionings);
-	OCL_RELEASE_OBJECT(MemObject, fbp.ptab4);
-	OCL_RELEASE_OBJECT(MemObject, fbp.ptab3);
-	OCL_RELEASE_OBJECT(MemObject, fbp.ptab2);
+	for (size_t pcount = 4; pcount >= 2; pcount--)
+	{
+		OCL_RELEASE_OBJECT(MemObject, fbp.ptab[pcount]);
+	}
 	OCL_RELEASE_OBJECT(MemObject, fbp.separate_errors);
 	OCL_RELEASE_OBJECT(MemObject, fbp.samechroma_errors);
 	OCL_RELEASE_OBJECT(MemObject, fbp.uncorr_errors);

@@ -121,21 +121,25 @@ static void compute_partition_error_color_weightings(__global const error_weight
 }
 
 __kernel
-void find_best_partitionings(__global const uint8_t *blk_stat, __global const imageblock *blk, __global const uint16_t *partition_sequence_batch,
-							__global uint16_t *best_partitions_single_weight_plane, __global uint16_t *best_partitions_dual_weight_planes,
-							__global const error_weight_block * ewb,
+void find_best_partitionings(__global const uint8_t *blk_stat, __global const imageblock *blk_batch, __global const uint16_t *partition_sequence_batch,
+							__global uint16_t *best_partitions_1plane_batch, __global uint16_t *best_partitions_2planes_batch,
+							__global const error_weight_block * ewb_batch,
 							__global const partition_info *ptab,
-							int partition_search_limit, int partition_count)
+							uint16_t partition_search_limit, int partition_count,
+							__global int4 * idebug, __global float4 * fdebug)
 {
-	size_t gid = get_group_id(0);
+	size_t gid = get_global_id(0);
 
 	if (blk_stat[gid] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
 		return;
 	
-	__global const imageblock *pb = &blk[gid];
+	__global const imageblock *pb = &blk_batch[gid];
 
 	int i, j;
 	__global const uint16_t *partition_sequence = partition_sequence_batch + gid * PARTITION_COUNT;
+	__global uint16_t *best_partitions_single_weight_plane = best_partitions_1plane_batch + gid * PARTITION_CANDIDATES;
+	__global uint16_t *best_partitions_dual_weight_planes = best_partitions_2planes_batch + gid * PARTITION_CANDIDATES;
+	__global const error_weight_block * ewb = ewb_batch + gid;
 
 	// partitioning errors assuming uncorrellated-chrominance endpoints
 	float uncorr_errors[PARTITION_COUNT];
@@ -157,7 +161,6 @@ void find_best_partitionings(__global const uint8_t *blk_stat, __global const im
 		for (i = 0; i < partition_search_limit; i++)
 		{
 			int partition = partition_sequence[i];
-			int bk_partition_count = ptab[partition].partition_count;
 
 			// compute the weighting to give to each color channel
 			// in each partition.
@@ -383,7 +386,6 @@ void find_best_partitionings(__global const uint8_t *blk_stat, __global const im
 		for (i = 0; i < partition_search_limit; i++)
 		{
 			int partition = partition_sequence[i];
-			int bk_partition_count = ptab[partition].partition_count;
 			
 			// compute the weighting to give to each color channel
 			// in each partition.
@@ -391,7 +393,7 @@ void find_best_partitionings(__global const uint8_t *blk_stat, __global const im
 			float4 color_scalefactors[4];
 			float4 inverse_color_scalefactors[4];
 			compute_partition_error_color_weightings(ewb, ptab + partition, error_weightings, color_scalefactors);
-			
+
 			for (j = 0; j < partition_count; j++)
 			{
 				inverse_color_scalefactors[j].x = 1.0f / MAX(color_scalefactors[j].x, 1e-7f);
@@ -407,7 +409,7 @@ void find_best_partitionings(__global const uint8_t *blk_stat, __global const im
 			float2 directions_gb[4];
 
 			compute_averages_and_directions_rgb(ptab + partition, pb, ewb, color_scalefactors, averages, directions_rgb, directions_rg, directions_rb, directions_gb);
-			
+
 			line3 uncorr_lines[4];
 			line3 samechroma_lines[4];
 			line2 separate_red_lines[4];

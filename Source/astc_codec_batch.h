@@ -24,7 +24,7 @@ struct find_best_partitionings_buffers
 	cl_kernel find_best_partitionings;
 
 	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_sequence;
-	cl_mem ptab2, ptab3, ptab4;
+	cl_mem ptab[5];
 	cl_mem uncorr_errors; // partitioning errors assuming uncorrellated-chrominance endpoints
 	cl_mem samechroma_errors; // partitioning errors assuming same-chrominance endpoints
 	cl_mem separate_errors; // partitioning errors assuming that one of the color channels is uncorrellated from all the other ones
@@ -64,6 +64,9 @@ private:
 	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_indices_1plane_batch;
 	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_indices_2planes_batch;
 
+	ocl_buffer<int4, ocl_buffer_type::DEVICE> idebug;
+	ocl_buffer<float4, ocl_buffer_type::DEVICE> fdebug;
+
 	// buffers used in compress_symbolic_batch_fixed_partition_*()
 	compress_fixed_partition_buffers tmpplanes;
 	find_best_partitionings_buffers fbp;
@@ -72,6 +75,7 @@ private:
 	void compress_symbolic_batch_fixed_partition_1_plane(float mode_cutoff, int partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates);
 	void compress_symbolic_batch_fixed_partition_2_planes(float mode_cutoff, int partition_count, int partition_offset, int separate_component, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates, uint8_t skip_mode);
 	void find_best_partitionings_batch(int partition_count, const imageblock * blk_batch);
+	void find_best_partitionings_batch_ocl(int partition_count, const imageblock * blk_batch);
 	void find_best_partitionings(int partition_search_limit, int partition_count, const imageblock * pb, const error_weight_block * ewb, uint16_t *best_partitions_single_weight_plane, uint16_t *best_partitions_dual_weight_planes);
 };
 

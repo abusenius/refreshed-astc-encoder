@@ -243,9 +243,8 @@ void SymbolicBatchCompressor::find_best_partitionings(int partition_search_limit
 		for (i = 0; i < partition_search_limit; i++)
 		{
 			int partition = partition_sequence[i];
-			int bk_partition_count = ptab[partition].partition_count;
 
-			assert(bk_partition_count == partition_count);
+			assert(ptab[partition].partition_count == partition_count);
 
 			// compute the weighting to give to each color channel
 			// in each partition.
@@ -471,9 +470,8 @@ void SymbolicBatchCompressor::find_best_partitionings(int partition_search_limit
 		for (i = 0; i < partition_search_limit; i++)
 		{
 			int partition = partition_sequence[i];
-			int bk_partition_count = ptab[partition].partition_count;
 			
-			assert(bk_partition_count == partition_count);
+			assert(ptab[partition].partition_count == partition_count);
 
 			// compute the weighting to give to each color channel
 			// in each partition.
@@ -759,4 +757,42 @@ void SymbolicBatchCompressor::find_best_partitionings_batch(int partition_count,
 		find_best_partitionings(fbp.partition_search_limits[partition_count], partition_count, blk, ewb,
 			partition_indices_1plane, partition_indices_2planes);
 	}
+}
+
+void SymbolicBatchCompressor::find_best_partitionings_batch_ocl(int partition_count, const imageblock * blk_batch)
+{
+	cl_int status;
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 6, fbp.ptab[partition_count]);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 7, fbp.partition_search_limits[partition_count]);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 8, partition_count);
+
+	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+	{
+		if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
+			continue;
+
+		const imageblock * blk = &blk_batch[blk_idx];
+		uint16_t *partition_sequence = &fbp.partition_sequence[0] + PARTITION_COUNT * blk_idx;
+
+		kmeans_compute_partition_ordering(xdim, ydim, zdim, partition_count, blk, partition_sequence);
+	}
+	fbp.partition_sequence.write_to_device();
+	blk_stat.write_to_device();
+
+	status = clFinish(opencl_queue);
+	OCL_CHECK_STATUS("Error in clFinish (fbp args)");
+	
+	size_t gsize[] = { batch_size };
+	size_t lsize[] = { 64 };
+
+	status = clEnqueueNDRangeKernel(opencl_queue, fbp.find_best_partitionings, 1, NULL, gsize, lsize, 0, NULL, NULL);
+	OCL_CHECK_STATUS("Unable to enqueue fbp kernel");
+
+	partition_indices_1plane_batch.read_from_device();
+	partition_indices_2planes_batch.read_from_device();
+	idebug.read_from_device();
+	fdebug.read_from_device();
+
+	status = clFinish(opencl_queue);
+	OCL_CHECK_STATUS("Error in clFinish (fbp kernel)");
 }

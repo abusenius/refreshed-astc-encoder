@@ -14,7 +14,7 @@ extern cl_context opencl_context;
 #define OPENCL_KERNEL_FILES "astc_find_best_partitioning.cl", "astc_averages_and_directions.cl"
 #define OPENCL_COMPILER_OPTIONS "-cl-mad-enable"
 
-#define OCL_IS_BLOCKING false
+#define OCL_IS_BLOCKING true
 
 #define OCL_CHECK_STATUS(str) if(status != CL_SUCCESS) { fprintf(stderr, "%s, errorcode: %i %s\n", str, status, cl_errcode_to_str(status)); exit(-1); }
 #define OCL_RELEASE_OBJECT(type, name) { status = clRelease##type(name); OCL_CHECK_STATUS("Cannot release "#type" "#name); }
@@ -32,8 +32,8 @@ extern cl_context opencl_context;
 
 #define OCL_CREATE_KERNEL(module, name) { module.##name = clCreateKernel(opencl_program, #name, &status);\
 								OCL_CHECK_STATUS("Cannot create kernel "#name); }
-#define OCL_SET_KERNEL_ARG(kernname, seq, arg) { status = clSetKernelArg(kernname, seq, sizeof(arg), &arg);\
-								OCL_CHECK_STATUS("Cannot set argument "#seq" ("#arg") for kernel "#kernname); }
+#define OCL_SET_KERNEL_ARG(kernname, seq, argname) { status = set_kernel_argument(kernname, seq, argname);\
+								OCL_CHECK_STATUS("Cannot set argument "#seq" ("#argname") for kernel "#kernname); }
 
 
 
@@ -60,6 +60,8 @@ public:
 	T * host_ptr;
 
 	void create_buffer(cl_mem_flags mem_flags, size_t count, cl_command_queue _opencl_queue);
+	void write_to_device();
+	void read_from_device();
 	T& operator[](size_t idx) { return host_ptr[idx]; };
 	const T& operator[](size_t idx) const { return host_ptr[idx]; };
 
@@ -101,7 +103,52 @@ inline void ocl_buffer<T, BUF_TYPE>::create_buffer(cl_mem_flags mem_flags, size_
 	status = clRetainCommandQueue(opencl_queue);
 	assert(status == CL_SUCCESS);
 	valid = true;
-};
+}
+
+
+template<typename T, ocl_buffer_type BUF_TYPE>
+inline void ocl_buffer<T, BUF_TYPE>::write_to_device()
+{
+	cl_int status;
+
+	switch (BUF_TYPE)
+	{
+	case ocl_buffer_type::DEVICE:
+		OCL_WRITE_BUFFER(dev_buf, size, host_ptr);
+		break;
+	case ocl_buffer_type::DEVICE_PREPINNED:
+		OCL_UNMAP_BUFFER(dev_buf, host_ptr);
+		break;
+	case ocl_buffer_type::PINNED_PAIR:
+		OCL_WRITE_BUFFER(dev_buf, size, host_ptr);
+		break;
+	default:
+		ASTC_CODEC_INTERNAL_ERROR;
+		break;
+	}
+}
+
+template<typename T, ocl_buffer_type BUF_TYPE>
+inline void ocl_buffer<T, BUF_TYPE>::read_from_device()
+{
+	cl_int status;
+
+	switch (BUF_TYPE)
+	{
+	case ocl_buffer_type::DEVICE:
+		OCL_READ_BUFFER(dev_buf, size, host_ptr);
+		break;
+	case ocl_buffer_type::DEVICE_PREPINNED:
+		OCL_MAP_BUFFER(dev_buf, T*, host_ptr, CL_MAP_READ | CL_MAP_WRITE, size);
+		break;
+	case ocl_buffer_type::PINNED_PAIR:
+		OCL_WRITE_BUFFER(dev_buf, size, host_ptr);
+		break;
+	default:
+		ASTC_CODEC_INTERNAL_ERROR;
+		break;
+	}
+}
 
 
 template<typename T, ocl_buffer_type BUF_TYPE>
@@ -136,5 +183,17 @@ ocl_buffer<T, BUF_TYPE>::~ocl_buffer()
 
 	valid = false;
 }
+
+
+template <typename T, ocl_buffer_type BT> inline cl_int set_kernel_argument(cl_kernel kernel, cl_uint seq, const ocl_buffer<T, BT>& arg)
+{
+	return clSetKernelArg(kernel, seq, sizeof(cl_mem), &arg.dev_buf);
+}
+
+template <typename T> inline cl_int set_kernel_argument(cl_kernel kernel, cl_uint seq, const T& arg)
+{
+	return clSetKernelArg(kernel, seq, sizeof(T), &arg);
+}
+
 
 #endif

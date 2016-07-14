@@ -23,7 +23,7 @@
 	#define __global
 	#define __local
 	#define __kernel
-    #define get_group_id(i) i
+    #define get_global_id(i) i
 	#define sqrt(i) i
 
 	#define XDIM 4
