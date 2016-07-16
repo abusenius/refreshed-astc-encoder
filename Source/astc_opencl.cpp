@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <locale.h>
 
 cl_platform_id opencl_platform;
 cl_device_id opencl_device;
@@ -50,7 +51,7 @@ static cl_int printDeviceInfo(cl_device_id device)
 
 	status = clGetDeviceInfo(device, CL_DEVICE_LOCAL_MEM_TYPE, sizeof(cl_device_local_mem_type), &memtype, NULL);
 	status |= clGetDeviceInfo(device, CL_DEVICE_LOCAL_MEM_SIZE, sizeof(cl_ulong), &clul, NULL);
-	if (status == CL_SUCCESS) printf("\t\tLoacl Mem size(type): %u KiB (%s)\n", (cl_uint)(clul >> 10), memtype_str[MIN(memtype, 3)]);
+	if (status == CL_SUCCESS) printf("\t\tLocal Mem size(type): %u KiB (%s)\n", (cl_uint)(clul >> 10), memtype_str[MIN(memtype, 3)]);
 
 	status = clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_CACHELINE_SIZE, sizeof(cl_uint), &clui, NULL);
 	status |= clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_CACHE_SIZE, sizeof(cl_ulong), &clul, NULL);
@@ -201,13 +202,14 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 
 	char compile_flags[1024] = "";
 	if (sizeof(void*) == 4)
-		strcat_s(compile_flags, 1024, " -D OCL_USE_32BIT_POINTERS");
+		strcat(compile_flags, " -D OCL_USE_32BIT_POINTERS");
 
 	if (sizeof(void*) == 8)
-		strcat_s(compile_flags, 1024, " -D OCL_USE_64BIT_POINTERS");
+		strcat(compile_flags, " -D OCL_USE_64BIT_POINTERS");
 
 	char compileOptions[4096];
-	sprintf_s(compileOptions, 4096, "%s -I %s -D XDIM=%i -D YDIM=%i -D ZDIM=%i -D TEXELS_PER_BLOCK=%i -D WEIGHT_IMPRECISION_ESTIM_SQUARED=%gf -D PLIMIT=%i %s",
+	setlocale(LC_NUMERIC, "C");
+	sprintf(compileOptions, "%s -I %s -D XDIM=%i -D YDIM=%i -D ZDIM=%i -D TEXELS_PER_BLOCK=%i -D WEIGHT_IMPRECISION_ESTIM_SQUARED=%gf -D PLIMIT=%i %s",
 		OPENCL_COMPILER_OPTIONS, OPENCL_KERNELS_SOURCE_PATH, xdim, ydim, zdim, texels_per_block, weight_imprecision_estim_squared, plimit, compile_flags);
 	if (!silentmode)
 		printf("Batch size: %i\nOpenCL compiler options:\n%s\n\n", batch_size, compileOptions);
@@ -240,7 +242,7 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 
 			fprintf(stderr, "Build Log:\n%s\n", buildLog);
 		}
-
+		getchar();
 		exit(-1);
 	}
 
