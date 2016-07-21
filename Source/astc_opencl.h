@@ -14,7 +14,7 @@ extern cl_context opencl_context;
 #define OPENCL_KERNEL_FILES "astc_find_best_partitioning.cl", "astc_averages_and_directions.cl"
 #define OPENCL_COMPILER_OPTIONS "-cl-mad-enable"
 
-#define OCL_IS_BLOCKING true
+#define OCL_IS_BLOCKING false
 
 #define OCL_CHECK_STATUS(str) if(status != CL_SUCCESS) { fprintf(stderr, "%s, errorcode: %i %s\n", str, status, cl_errcode_to_str(status)); exit(-1); }
 #define OCL_RELEASE_OBJECT(type, name) { status = clRelease##type(name); OCL_CHECK_STATUS("Cannot release "#type" "#name); }

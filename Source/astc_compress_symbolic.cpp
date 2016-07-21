@@ -1329,9 +1329,6 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 
 	OCL_CREATE_BUFFER(blk_buf, CL_MEM_READ_ONLY, sizeof(imageblock) * max_batch_size, NULL);
 	
-	OCL_CREATE_BUFFER(fbp.uncorr_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * PARTITION_COUNT * max_batch_size, NULL);
-	OCL_CREATE_BUFFER(fbp.samechroma_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * PARTITION_COUNT * max_batch_size, NULL);
-	OCL_CREATE_BUFFER(fbp.separate_errors, CL_MEM_READ_ONLY | CL_MEM_HOST_NO_ACCESS, sizeof(float) * 4 * PARTITION_COUNT * max_batch_size, NULL);
 	for (size_t pcount = 2; pcount <= 4; pcount++)
 	{
 		OCL_CREATE_BUFFER(fbp.ptab[pcount], CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
@@ -1345,14 +1342,8 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 3, partition_indices_1plane_batch);
 	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 4, partition_indices_2planes_batch);
 	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 5, ewb_batch);
-
-	idebug.create_buffer(CL_MEM_READ_WRITE, max_batch_size * PARTITION_COUNT, opencl_queue);
-	fdebug.create_buffer(CL_MEM_READ_WRITE, max_batch_size * PARTITION_COUNT, opencl_queue);
-	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 9, idebug);
-	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 10, fdebug);
-
 	
-	clFinish(opencl_queue);
+	clFlush(opencl_queue);
 }
 
 #define FIND_BEST_SCB_CANDIDATES(modesel) {best_errorval_in_mode = 1e30f;\
@@ -1583,7 +1574,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 	for (int partition_count = 2; partition_count <= 4; partition_count++)
 	{
 		find_best_partitionings_batch_ocl(partition_count, blk_batch);
-		find_best_partitionings_batch(partition_count, blk_batch);
+		//find_best_partitionings_batch(partition_count, blk_batch);
 
 		skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
 		for (i = 0; i < 2; i++)
@@ -1671,9 +1662,6 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 	{
 		OCL_RELEASE_OBJECT(MemObject, fbp.ptab[pcount]);
 	}
-	OCL_RELEASE_OBJECT(MemObject, fbp.separate_errors);
-	OCL_RELEASE_OBJECT(MemObject, fbp.samechroma_errors);
-	OCL_RELEASE_OBJECT(MemObject, fbp.uncorr_errors);
 	OCL_RELEASE_OBJECT(MemObject, blk_buf);
 
 	OCL_RELEASE_OBJECT(CommandQueue, opencl_queue);

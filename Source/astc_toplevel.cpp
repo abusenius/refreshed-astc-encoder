@@ -2496,8 +2496,8 @@ int main(int argc, char **argv)
 	}
 
 
-	start_coding_time = get_time();
 	init_opencl(opencl_plat_id, opencl_dev_id, silentmode, batch_size, xdim, ydim, zdim, ewp.partition_search_limit, decode_mode);
+	start_coding_time = get_time();
 
 
 	if (opmode == 1)
@@ -2510,7 +2510,7 @@ int main(int argc, char **argv)
 
 
 	end_coding_time = get_time();
-
+	destroy_opencl();
 
 	// print PSNR if encoding
 	if (opmode == 2)

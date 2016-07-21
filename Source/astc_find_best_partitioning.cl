@@ -125,8 +125,7 @@ void find_best_partitionings(__global const uint8_t *blk_stat, __global const im
 							__global uint16_t *best_partitions_1plane_batch, __global uint16_t *best_partitions_2planes_batch,
 							__global const error_weight_block * ewb_batch,
 							__global const partition_info *ptab,
-							uint16_t partition_search_limit, int partition_count,
-							__global int4 * idebug, __global float4 * fdebug)
+							uint16_t partition_search_limit, int partition_count)
 {
 	size_t gid = get_global_id(0);
 

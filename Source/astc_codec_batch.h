@@ -25,9 +25,6 @@ struct find_best_partitionings_buffers
 
 	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_sequence;
 	cl_mem ptab[5];
-	cl_mem uncorr_errors; // partitioning errors assuming uncorrellated-chrominance endpoints
-	cl_mem samechroma_errors; // partitioning errors assuming same-chrominance endpoints
-	cl_mem separate_errors; // partitioning errors assuming that one of the color channels is uncorrellated from all the other ones
 
 	float weight_imprecision_estim_squared;
 	uint16_t partition_search_limits[5];
@@ -64,8 +61,8 @@ private:
 	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_indices_1plane_batch;
 	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_indices_2planes_batch;
 
-	ocl_buffer<int4, ocl_buffer_type::DEVICE> idebug;
-	ocl_buffer<float4, ocl_buffer_type::DEVICE> fdebug;
+	//ocl_buffer<int4, ocl_buffer_type::DEVICE> idebug;
+	//ocl_buffer<float4, ocl_buffer_type::DEVICE> fdebug;
 
 	// buffers used in compress_symbolic_batch_fixed_partition_*()
 	compress_fixed_partition_buffers tmpplanes;

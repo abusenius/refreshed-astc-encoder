@@ -778,20 +778,27 @@ void SymbolicBatchCompressor::find_best_partitionings_batch_ocl(int partition_co
 	}
 	fbp.partition_sequence.write_to_device();
 	blk_stat.write_to_device();
-
-	status = clFinish(opencl_queue);
-	OCL_CHECK_STATUS("Error in clFinish (fbp args)");
 	
-	size_t gsize[] = { batch_size };
-	size_t lsize[] = { 64 };
+	constexpr size_t wgsize = 64;
+	size_t mod = batch_size % wgsize;
+	size_t offset[] = { 0 };
+	size_t gsize[] = { batch_size - mod};
+	size_t lsize[] = { wgsize };
 
 	status = clEnqueueNDRangeKernel(opencl_queue, fbp.find_best_partitionings, 1, NULL, gsize, lsize, 0, NULL, NULL);
 	OCL_CHECK_STATUS("Unable to enqueue fbp kernel");
 
+	if (mod)
+	{
+		offset[0] = gsize[0];
+		gsize[0] = mod;
+		lsize[0] = mod;
+		status = clEnqueueNDRangeKernel(opencl_queue, fbp.find_best_partitionings, 1, offset, gsize, lsize, 0, NULL, NULL);
+		OCL_CHECK_STATUS("Unable to enqueue fbp kernel");
+	}
+
 	partition_indices_1plane_batch.read_from_device();
 	partition_indices_2planes_batch.read_from_device();
-	idebug.read_from_device();
-	fdebug.read_from_device();
 
 	status = clFinish(opencl_queue);
 	OCL_CHECK_STATUS("Error in clFinish (fbp kernel)");
