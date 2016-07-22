@@ -16,6 +16,10 @@ struct compress_fixed_partition_buffers
 	float *decimated_weights;
 	float *flt_quantized_decimated_quantized_weights;
 	uint8_t *u8_quantized_decimated_quantized_weights;
+	float *weight_low_value1;
+	float *weight_low_value2;
+	float *weight_high_value1;
+	float *weight_high_value2;
 };
 
 // buffers and constants used to store intermediate data in find_best_partitionings_batch()

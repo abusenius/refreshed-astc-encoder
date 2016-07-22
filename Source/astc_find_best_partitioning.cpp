@@ -750,7 +750,7 @@ void SymbolicBatchCompressor::find_best_partitionings_batch(int partition_count,
 			continue;
 
 		const imageblock * blk = &blk_batch[blk_idx];
-		error_weight_block *ewb = &ewb_batch[blk_idx];
+		const error_weight_block *ewb = &ewb_batch[blk_idx];
 
 		uint16_t * partition_indices_1plane = &partition_indices_1plane_batch[0] + blk_idx * PARTITION_CANDIDATES;
 		uint16_t * partition_indices_2planes = &partition_indices_2planes_batch[0] + blk_idx * PARTITION_CANDIDATES;
