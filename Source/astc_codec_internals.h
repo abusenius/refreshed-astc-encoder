@@ -54,6 +54,7 @@
 // ASTC parameters
 #define MAX_TEXELS_PER_BLOCK 216
 #define MAX_WEIGHTS_PER_BLOCK 64
+#define MAX_PARTITIONS 4
 #define MIN_WEIGHT_BITS_PER_BLOCK 24
 #define MAX_WEIGHT_BITS_PER_BLOCK 96
 #define PARTITION_BITS 10
@@ -744,7 +745,7 @@ void determine_optimal_set_of_endpoint_formats_to_use(int xdim, int ydim, int zd
 													  // bitcounts and errors computed for the various quantization methods
 													  const int *qwt_bitcounts, const float *qwt_errors,
 													  // output data
-													  int partition_format_specifiers[4][4], int quantized_weight[4], int quantization_level[4], int quantization_level_mod[4]);
+													  int partition_format_specifiers[4*4], int quantized_weight[4], int quantization_level[4], int quantization_level_mod[4]);
 
 
 void recompute_ideal_colors(int xdim, int ydim, int zdim, int weight_quantization_mode, endpoints * ep,	// contains the endpoints we wish to update

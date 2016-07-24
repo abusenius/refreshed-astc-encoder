@@ -12,6 +12,7 @@ struct compress_fixed_partition_buffers
 	endpoints_and_weights* ei2;
 	endpoints_and_weights* eix1;
 	endpoints_and_weights* eix2;
+	endpoints* ep;
 	float *decimated_quantized_weights;
 	float *decimated_weights;
 	float *flt_quantized_decimated_quantized_weights;
@@ -20,6 +21,11 @@ struct compress_fixed_partition_buffers
 	float *weight_low_value2;
 	float *weight_high_value1;
 	float *weight_high_value2;
+	uint8_t *scb_stat;
+	int *partition_format_specifiers;
+	int *quantized_weight;
+	int *color_quantization_level;
+	int *color_quantization_level_mod;
 };
 
 // buffers and constants used to store intermediate data in find_best_partitionings_batch()

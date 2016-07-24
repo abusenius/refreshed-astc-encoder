@@ -761,7 +761,7 @@ void determine_optimal_set_of_endpoint_formats_to_use(int xdim, int ydim, int zd
 													  // bitcounts and errors computed for the various quantization methods
 													  const int *qwt_bitcounts, const float *qwt_errors,
 													  // output data
-													  int partition_format_specifiers[4][4], int quantized_weight[4],
+													  int partition_format_specifiers[4*4], int quantized_weight[4],
 													  int quantization_level[4], int quantization_level_mod[4])
 {
 	int i, j;
@@ -953,7 +953,7 @@ void determine_optimal_set_of_endpoint_formats_to_use(int xdim, int ydim, int zd
 			quantization_level_mod[i] = best_quantization_levels_mod[best_error_weights[i]];
 			for (j = 0; j < partition_count; j++)
 			{
-				partition_format_specifiers[i][j] = best_ep_formats[best_error_weights[i]][j];
+				partition_format_specifiers[i*4+j] = best_ep_formats[best_error_weights[i]][j];
 			}
 		}
 	}
