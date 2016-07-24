@@ -1077,10 +1077,12 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 {
 	cl_int status;
 
-	delete[] tmpplanes.color_quantization_level_mod;
-	delete[] tmpplanes.color_quantization_level;
-	delete[] tmpplanes.quantized_weight;
-	delete[] tmpplanes.partition_format_specifiers;
+	delete[] tmpplanes.per_scb.u8_qdq_weights;
+	delete[] tmpplanes.per_scb.decimation_mode;
+	delete[] tmpplanes.per_scb.color_quantization_level_mod;
+	delete[] tmpplanes.per_scb.color_quantization_level;
+	delete[] tmpplanes.per_scb.quantized_weight;
+	delete[] tmpplanes.per_scb.partition_format_specifiers;
 	delete[] tmpplanes.scb_stat;
 	delete[] tmpplanes.weight_high_value2;
 	delete[] tmpplanes.weight_high_value1;
@@ -1090,7 +1092,7 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 	delete[] tmpplanes.flt_quantized_decimated_quantized_weights;
 	delete[] tmpplanes.decimated_weights;
 	delete[] tmpplanes.decimated_quantized_weights;
-	delete[] tmpplanes.ep;
+	delete[] tmpplanes.per_scb.ep;
 	delete[] tmpplanes.eix2;
 	delete[] tmpplanes.eix1;
 	delete[] tmpplanes.ei2;
@@ -1129,7 +1131,7 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 	tmpplanes.ei2 = new endpoints_and_weights[max_blocks];
 	tmpplanes.eix1 = new endpoints_and_weights[MAX_DECIMATION_MODES * max_blocks];
 	tmpplanes.eix2 = new endpoints_and_weights[MAX_DECIMATION_MODES * max_blocks];
-	tmpplanes.ep = new endpoints[SCB_CANDIDATES * max_blocks];
+	tmpplanes.per_scb.ep = new endpoints[SCB_CANDIDATES * max_blocks];
 	tmpplanes.decimated_quantized_weights = new float[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks];
 	tmpplanes.decimated_weights = new float[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks];
 	tmpplanes.flt_quantized_decimated_quantized_weights = new float[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks];
@@ -1139,10 +1141,12 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 	tmpplanes.weight_high_value1 = new float[MAX_WEIGHT_MODES * max_blocks];
 	tmpplanes.weight_high_value2 = new float[MAX_WEIGHT_MODES * max_blocks];
 	tmpplanes.scb_stat = new uint8_t[max_blocks];
-	tmpplanes.partition_format_specifiers = new int[SCB_CANDIDATES * MAX_PARTITIONS * max_blocks];
-	tmpplanes.quantized_weight = new int[SCB_CANDIDATES * max_blocks];
-	tmpplanes.color_quantization_level = new int[SCB_CANDIDATES * max_blocks];
-	tmpplanes.color_quantization_level_mod = new int[SCB_CANDIDATES * max_blocks];
+	tmpplanes.per_scb.partition_format_specifiers = new int[SCB_CANDIDATES * MAX_PARTITIONS * max_blocks];
+	tmpplanes.per_scb.quantized_weight = new int[SCB_CANDIDATES * max_blocks];
+	tmpplanes.per_scb.color_quantization_level = new int[SCB_CANDIDATES * max_blocks];
+	tmpplanes.per_scb.color_quantization_level_mod = new int[SCB_CANDIDATES * max_blocks];
+	tmpplanes.per_scb.decimation_mode = new int[SCB_CANDIDATES * max_blocks];
+	tmpplanes.per_scb.u8_qdq_weights = new uint8_t[2 * MAX_WEIGHTS_PER_BLOCK * SCB_CANDIDATES * max_blocks];
 
 	fbp.partition_sequence.create_buffer(CL_MEM_READ_ONLY, max_blocks * PARTITION_COUNT, opencl_queue);
 }
@@ -1308,10 +1312,10 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(fl
 		// for each weighting mode, determine the optimal combination of color endpoint encodings
 		// and weight encodings; return results for the 4 best-looking modes.
 
-		int *partition_format_specifiers = &tmpplanes.partition_format_specifiers[MAX_PARTITIONS * SCB_CANDIDATES * blk_idx];
-		int *quantized_weight = &tmpplanes.quantized_weight[SCB_CANDIDATES * blk_idx];
-		int *color_quantization_level = &tmpplanes.color_quantization_level[SCB_CANDIDATES * blk_idx];
-		int *color_quantization_level_mod = &tmpplanes.color_quantization_level_mod[SCB_CANDIDATES * blk_idx];
+		int *partition_format_specifiers = &tmpplanes.per_scb.partition_format_specifiers[MAX_PARTITIONS * SCB_CANDIDATES * blk_idx];
+		int *quantized_weight = &tmpplanes.per_scb.quantized_weight[SCB_CANDIDATES * blk_idx];
+		int *color_quantization_level = &tmpplanes.per_scb.color_quantization_level[SCB_CANDIDATES * blk_idx];
+		int *color_quantization_level_mod = &tmpplanes.per_scb.color_quantization_level_mod[SCB_CANDIDATES * blk_idx];
 		determine_optimal_set_of_endpoint_formats_to_use(xdim, ydim, zdim, pi, blk, ewb, &(ei->ep), -1,	// used to flag that we are in single-weight mode
 			qwt_bitcounts, qwt_errors, partition_format_specifiers, quantized_weight, color_quantization_level, color_quantization_level_mod);
 
@@ -1323,50 +1327,58 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(fl
 				tmpplanes.scb_stat[blk_idx] |= 1 << i;
 				continue;
 			}
+
+			int scb_idx = blk_idx * SCB_CANDIDATES + i;
 			int decimation_mode = bsd->block_modes[quantized_weight[i]].decimation_mode;
-			tmpplanes.ep[SCB_CANDIDATES * blk_idx + i] = eix[decimation_mode].ep;
+			tmpplanes.per_scb.decimation_mode[scb_idx] = decimation_mode;
+			tmpplanes.per_scb.ep[scb_idx] = eix[decimation_mode].ep;
+
+			const uint8_t *u8_weight_src = u8_quantized_decimated_quantized_weights + MAX_WEIGHTS_PER_BLOCK * quantized_weight[i];
+			memcpy(&tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * scb_idx], u8_weight_src, sizeof(uint8_t) * MAX_WEIGHTS_PER_BLOCK);
 		}
 	}
 
-	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+	
+	// then iterate over the 4 believed-to-be-best modes to find out which one is
+	// actually best.
+	for (int l = 0; l < ewp.max_refinement_iters; l++)
 	{
-		if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
-			continue;
-
-		const imageblock * blk = &blk_batch[blk_idx];
-		const error_weight_block *ewb = &ewb_batch[blk_idx];
-		symbolic_compressed_block *scb = &scb_candidates[SCB_CANDIDATES * blk_idx];
-		uint8_t *u8_quantized_decimated_quantized_weights = &tmpplanes.u8_quantized_decimated_quantized_weights[MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-
-		int partition_index = 0;
-		if (partition_count > 1)
+		for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 		{
-			partition_index = partition_indices_1plane_batch[blk_idx * PARTITION_CANDIDATES + partition_offset];
-		}
-		const partition_info *pi = &ptab[partition_index];
+			if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
+				continue;
 
-		const int *partition_format_specifiers = &tmpplanes.partition_format_specifiers[MAX_PARTITIONS * SCB_CANDIDATES * blk_idx];
-		const int *quantized_weight = &tmpplanes.quantized_weight[SCB_CANDIDATES * blk_idx];
-		const int *color_quantization_level = &tmpplanes.color_quantization_level[SCB_CANDIDATES * blk_idx];
-		const int *color_quantization_level_mod = &tmpplanes.color_quantization_level_mod[SCB_CANDIDATES * blk_idx];
+			const imageblock * blk = &blk_batch[blk_idx];
+			const error_weight_block *ewb = &ewb_batch[blk_idx];
+			symbolic_compressed_block *scb = &scb_candidates[SCB_CANDIDATES * blk_idx];
+			uint8_t *u8_quantized_decimated_quantized_weights = &tmpplanes.u8_quantized_decimated_quantized_weights[MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
 
-		// then iterate over the 4 believed-to-be-best modes to find out which one is
-		// actually best.
-		for (int l = 0; l < ewp.max_refinement_iters; l++)
-		{
+			int partition_index = 0;
+			if (partition_count > 1)
+			{
+				partition_index = partition_indices_1plane_batch[blk_idx * PARTITION_CANDIDATES + partition_offset];
+			}
+			const partition_info *pi = &ptab[partition_index];
+
 			for (int i = 0; i < 4; i++)
 			{
 				if (tmpplanes.scb_stat[blk_idx] & (0x11 << i))
 					continue;
 
-				int decimation_mode = bsd->block_modes[quantized_weight[i]].decimation_mode;
-				int weight_quantization_mode = bsd->block_modes[quantized_weight[i]].quantization_mode;
+				int scb_idx = SCB_CANDIDATES * blk_idx + i;
+				
+				const int quantized_weight = tmpplanes.per_scb.quantized_weight[scb_idx];
+				const int color_quantization_level = tmpplanes.per_scb.color_quantization_level[scb_idx];
+				const int color_quantization_level_mod = tmpplanes.per_scb.color_quantization_level_mod[scb_idx];
+				const int decimation_mode = tmpplanes.per_scb.decimation_mode[scb_idx];
+				const int *partition_format_specifiers = &tmpplanes.per_scb.partition_format_specifiers[MAX_PARTITIONS * scb_idx];
+				const int weight_quantization_mode = bsd->block_modes[quantized_weight].quantization_mode;
 				const decimation_table *it = ixtab2[decimation_mode];
 
-				const uint8_t *u8_weight_src = u8_quantized_decimated_quantized_weights + MAX_WEIGHTS_PER_BLOCK * quantized_weight[i];
+				const uint8_t *u8_weight_src = &tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * scb_idx];
 
 				// recompute the ideal color endpoints before storing them.
-				endpoints *ep = &tmpplanes.ep[SCB_CANDIDATES * blk_idx + i];
+				endpoints *ep = &tmpplanes.per_scb.ep[scb_idx];
 				float4 rgbs_colors[4];
 				float4 rgbo_colors[4];
 				float2 lum_intervals[4];
@@ -1382,7 +1394,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(fl
 					scb[i].color_formats[j] = pack_color_endpoints(decode_mode,
 						ep->endpt0[j],
 						ep->endpt1[j],
-						rgbs_colors[j], rgbo_colors[j], lum_intervals[j], partition_format_specifiers[i * 4 + j], scb[i].color_values[j], color_quantization_level[i]);
+						rgbs_colors[j], rgbo_colors[j], lum_intervals[j], partition_format_specifiers[j], scb[i].color_values[j], color_quantization_level);
 				}
 
 
@@ -1403,7 +1415,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(fl
 						color_formats_mod[j] = pack_color_endpoints(decode_mode,
 							ep->endpt0[j],
 							ep->endpt1[j],
-							rgbs_colors[j], rgbo_colors[j], lum_intervals[j], partition_format_specifiers[i * 4 + j], colorvals[j], color_quantization_level_mod[i]);
+							rgbs_colors[j], rgbo_colors[j], lum_intervals[j], partition_format_specifiers[j], colorvals[j], color_quantization_level_mod);
 					}
 					if (color_formats_mod[0] == color_formats_mod[1]
 						&& (partition_count == 2 || (color_formats_mod[0] == color_formats_mod[2] && (partition_count == 3 || (color_formats_mod[0] == color_formats_mod[3])))))
@@ -1421,8 +1433,8 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(fl
 				// store header fields
 				scb[i].partition_count = partition_count;
 				scb[i].partition_index = partition_index;
-				scb[i].color_quantization_level = scb[i].color_formats_matched ? color_quantization_level_mod[i] : color_quantization_level[i];
-				scb[i].block_mode = quantized_weight[i];
+				scb[i].color_quantization_level = scb[i].color_formats_matched ? color_quantization_level_mod : color_quantization_level;
+				scb[i].block_mode = quantized_weight;
 				scb[i].error_block = 0;
 
 				if (scb[i].color_quantization_level < 4)
@@ -1431,29 +1443,34 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(fl
 				}
 
 			}
-
-			for (int i = 0; i < 4; i++)
-			{
-				if (tmpplanes.scb_stat[blk_idx] & (0x11 << i))
-					continue;
-
-				int decimation_mode = bsd->block_modes[quantized_weight[i]].decimation_mode;
-				const decimation_table *it = ixtab2[decimation_mode];
-
-				uint8_t *u8_weight_src = u8_quantized_decimated_quantized_weights + MAX_WEIGHTS_PER_BLOCK * quantized_weight[i];
-				// perform a final pass over the weights to try to improve them.
-				int adjustments = realign_weights(decode_mode,
-					xdim, ydim, zdim,
-					blk, ewb, &scb[i],
-					u8_weight_src,
-					NULL);
-
-				if (adjustments == 0)
-					tmpplanes.scb_stat[blk_idx] |= 0x10 << i;
-			}
-
 		}
 
+		for (int scb_idx = 0; scb_idx < batch_size * SCB_CANDIDATES; scb_idx++)
+		{
+			int blk_idx = scb_idx >> 2;
+			int scb_off = scb_idx & 0x03;
+			if (tmpplanes.scb_stat[blk_idx] & (0x11 << scb_off))
+				continue;
+
+			const imageblock * blk = &blk_batch[blk_idx];
+			const error_weight_block *ewb = &ewb_batch[blk_idx];
+			uint8_t *u8_quantized_decimated_quantized_weights = &tmpplanes.u8_quantized_decimated_quantized_weights[MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+			int quantized_weight = tmpplanes.per_scb.quantized_weight[scb_idx];
+
+			int decimation_mode = bsd->block_modes[quantized_weight].decimation_mode;
+			const decimation_table *it = ixtab2[decimation_mode];
+
+			uint8_t *u8_weight_src = &tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * scb_idx];
+
+			int adjustments = realign_weights(decode_mode,
+				xdim, ydim, zdim,
+				blk, ewb, &scb_candidates[scb_idx],
+				u8_weight_src,
+				NULL);
+
+			if (adjustments == 0)
+				tmpplanes.scb_stat[blk_idx] |= 0x10 << scb_off;
+		}
 	}
 
 	for (int scb_idx = 0; scb_idx < batch_size * SCB_CANDIDATES; scb_idx++)
@@ -1463,13 +1480,10 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(fl
 		if (tmpplanes.scb_stat[blk_idx] & (1 << scb_off))
 			continue;
 		
-		const uint8_t *u8_quantized_decimated_quantized_weights = &tmpplanes.u8_quantized_decimated_quantized_weights[MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		const int quantized_weight = tmpplanes.quantized_weight[scb_idx];
-
-		int decimation_mode = bsd->block_modes[quantized_weight].decimation_mode;
+		int decimation_mode = tmpplanes.per_scb.decimation_mode[scb_idx];
 		const decimation_table *it = ixtab2[decimation_mode];
 
-		const uint8_t *u8_weight_src = u8_quantized_decimated_quantized_weights + MAX_WEIGHTS_PER_BLOCK * quantized_weight;
+		const uint8_t *u8_weight_src = &tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * scb_idx];
 		int weights_to_copy = it->num_weights;
 
 		for (int j = 0; j < weights_to_copy; j++)
@@ -1693,10 +1707,10 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(f
 
 
 		// decide the optimal combination of color endpoint encodings and weight encoodings.
-		int *partition_format_specifiers = &tmpplanes.partition_format_specifiers[MAX_PARTITIONS * SCB_CANDIDATES * blk_idx];
-		int *quantized_weight = &tmpplanes.quantized_weight[SCB_CANDIDATES * blk_idx];
-		int *color_quantization_level = &tmpplanes.color_quantization_level[SCB_CANDIDATES * blk_idx];
-		int *color_quantization_level_mod = &tmpplanes.color_quantization_level_mod[SCB_CANDIDATES * blk_idx];
+		int *partition_format_specifiers = &tmpplanes.per_scb.partition_format_specifiers[MAX_PARTITIONS * SCB_CANDIDATES * blk_idx];
+		int *quantized_weight = &tmpplanes.per_scb.quantized_weight[SCB_CANDIDATES * blk_idx];
+		int *color_quantization_level = &tmpplanes.per_scb.color_quantization_level[SCB_CANDIDATES * blk_idx];
+		int *color_quantization_level_mod = &tmpplanes.per_scb.color_quantization_level_mod[SCB_CANDIDATES * blk_idx];
 
 		endpoints epm;
 		merge_endpoints(&(ei1->ep), &(ei2->ep), separate_component, &epm);
@@ -1715,55 +1729,63 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(f
 				tmpplanes.scb_stat[blk_idx] |= 1 << i;
 				continue;
 			}
+
+			int scb_idx = blk_idx * SCB_CANDIDATES + i;
 			int decimation_mode = bsd->block_modes[quantized_weight[i]].decimation_mode;
-			merge_endpoints(&(eix1[decimation_mode].ep), &(eix2[decimation_mode].ep), separate_component, &tmpplanes.ep[SCB_CANDIDATES * blk_idx + i]);
+			tmpplanes.per_scb.decimation_mode[scb_idx] = decimation_mode;
+			merge_endpoints(&(eix1[decimation_mode].ep), &(eix2[decimation_mode].ep), separate_component, &tmpplanes.per_scb.ep[scb_idx]);
+
+			const uint8_t *u8_weight1_src = u8_quantized_decimated_quantized_weights + MAX_WEIGHTS_PER_BLOCK * (2 * quantized_weight[i]);
+			const uint8_t *u8_weight2_src = u8_quantized_decimated_quantized_weights + MAX_WEIGHTS_PER_BLOCK * (2 * quantized_weight[i] + 1);
+			memcpy(&tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * (2 * scb_idx)], u8_weight1_src, sizeof(uint8_t) * MAX_WEIGHTS_PER_BLOCK);
+			memcpy(&tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * (2 * scb_idx + 1)], u8_weight2_src, sizeof(uint8_t) * MAX_WEIGHTS_PER_BLOCK);
 		}
 
 	}
 
-
-	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+	
+	// then iterate over the 4 believed-to-be-best modes to find out which one is
+	// actually best.
+	for (int l = 0; l < ewp.max_refinement_iters; l++)
 	{
-		if (blk_stat[blk_idx] & skip_mode)
-			continue;
-
-		const imageblock * blk = &blk_batch[blk_idx];
-		const error_weight_block *ewb = &ewb_batch[blk_idx];
-		symbolic_compressed_block *scb = &scb_candidates[SCB_CANDIDATES * blk_idx];
-		uint8_t *u8_quantized_decimated_quantized_weights = &tmpplanes.u8_quantized_decimated_quantized_weights[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-
-		int partition_index = 0;
-		if (partition_count > 1)
+		for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 		{
-			partition_index = partition_indices_2planes_batch[blk_idx * PARTITION_CANDIDATES + partition_offset];
-			separate_component = partition_index >> PARTITION_BITS;
-			partition_index = partition_index & (PARTITION_COUNT - 1);
-		}
-		const partition_info *pi = &ptab[partition_index];
+			if (blk_stat[blk_idx] & skip_mode)
+				continue;
 
-		const int *partition_format_specifiers = &tmpplanes.partition_format_specifiers[MAX_PARTITIONS * SCB_CANDIDATES * blk_idx];
-		const int *quantized_weight = &tmpplanes.quantized_weight[SCB_CANDIDATES * blk_idx];
-		const int *color_quantization_level = &tmpplanes.color_quantization_level[SCB_CANDIDATES * blk_idx];
-		const int *color_quantization_level_mod = &tmpplanes.color_quantization_level_mod[SCB_CANDIDATES * blk_idx];
+			const imageblock * blk = &blk_batch[blk_idx];
+			const error_weight_block *ewb = &ewb_batch[blk_idx];
+			symbolic_compressed_block *scb = &scb_candidates[SCB_CANDIDATES * blk_idx];
 
-		// then iterate over the 4 believed-to-be-best modes to find out which one is
-		// actually best.
-		for (int l = 0; l < ewp.max_refinement_iters; l++)
-		{
+			int partition_index = 0;
+			if (partition_count > 1)
+			{
+				partition_index = partition_indices_2planes_batch[blk_idx * PARTITION_CANDIDATES + partition_offset];
+				separate_component = partition_index >> PARTITION_BITS;
+				partition_index = partition_index & (PARTITION_COUNT - 1);
+			}
+			const partition_info *pi = &ptab[partition_index];
+
 			for (int i = 0; i < 4; i++)
 			{
 				if (tmpplanes.scb_stat[blk_idx] & (0x11 << i))
 					continue;
 
-				int decimation_mode = bsd->block_modes[quantized_weight[i]].decimation_mode;
-				int weight_quantization_mode = bsd->block_modes[quantized_weight[i]].quantization_mode;
+				int scb_idx = SCB_CANDIDATES * blk_idx + i;
+
+				const int quantized_weight = tmpplanes.per_scb.quantized_weight[scb_idx];
+				const int decimation_mode = tmpplanes.per_scb.decimation_mode[scb_idx];
+				const int color_quantization_level = tmpplanes.per_scb.color_quantization_level[scb_idx];
+				const int color_quantization_level_mod = tmpplanes.per_scb.color_quantization_level_mod[scb_idx];
+				const int *partition_format_specifiers = &tmpplanes.per_scb.partition_format_specifiers[MAX_PARTITIONS * scb_idx];
+				const int weight_quantization_mode = bsd->block_modes[quantized_weight].quantization_mode;
 				const decimation_table *it = ixtab2[decimation_mode];
 
-				const uint8_t *u8_weight1_src = u8_quantized_decimated_quantized_weights + MAX_WEIGHTS_PER_BLOCK * (2 * quantized_weight[i]);
-				const uint8_t *u8_weight2_src = u8_quantized_decimated_quantized_weights + MAX_WEIGHTS_PER_BLOCK * (2 * quantized_weight[i] + 1);
+				const uint8_t *u8_weight1_src = &tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * (2 * scb_idx)];
+				const uint8_t *u8_weight2_src = &tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * (2 * scb_idx + 1)];
 
 				// recompute the ideal color endpoints before storing them.
-				endpoints *ep = &tmpplanes.ep[SCB_CANDIDATES * blk_idx + i];
+				endpoints *ep = &tmpplanes.per_scb.ep[scb_idx];
 				float4 rgbs_colors[4];
 				float4 rgbo_colors[4];
 				float2 lum_intervals[4];
@@ -1777,7 +1799,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(f
 					scb[i].color_formats[j] = pack_color_endpoints(decode_mode,
 						ep->endpt0[j],
 						ep->endpt1[j],
-						rgbs_colors[j], rgbo_colors[j], lum_intervals[j], partition_format_specifiers[i * 4 + j], scb[i].color_values[j], color_quantization_level[i]);
+						rgbs_colors[j], rgbo_colors[j], lum_intervals[j], partition_format_specifiers[j], scb[i].color_values[j], color_quantization_level);
 				}
 
 				// if all the color endpoint modes are the same, we get a few more
@@ -1797,7 +1819,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(f
 						color_formats_mod[j] = pack_color_endpoints(decode_mode,
 							ep->endpt0[j],
 							ep->endpt1[j],
-							rgbs_colors[j], rgbo_colors[j], lum_intervals[j], partition_format_specifiers[i * 4 + j], colorvals[j], color_quantization_level_mod[i]);
+							rgbs_colors[j], rgbo_colors[j], lum_intervals[j], partition_format_specifiers[j], colorvals[j], color_quantization_level_mod);
 					}
 					if (color_formats_mod[0] == color_formats_mod[1]
 						&& (partition_count == 2 || (color_formats_mod[0] == color_formats_mod[2] && (partition_count == 3 || (color_formats_mod[0] == color_formats_mod[3])))))
@@ -1815,8 +1837,8 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(f
 				// store header fields
 				scb[i].partition_count = partition_count;
 				scb[i].partition_index = partition_index;
-				scb[i].color_quantization_level = scb[i].color_formats_matched ? color_quantization_level_mod[i] : color_quantization_level[i];
-				scb[i].block_mode = quantized_weight[i];
+				scb[i].color_quantization_level = scb[i].color_formats_matched ? color_quantization_level_mod : color_quantization_level;
+				scb[i].block_mode = quantized_weight;
 				scb[i].plane2_color_component = separate_component;
 				scb[i].error_block = 0;
 
@@ -1826,29 +1848,34 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(f
 				}
 
 			}
-
-			for (int i = 0; i < 4; i++)
-			{
-				if (tmpplanes.scb_stat[blk_idx] & (0x11 << i))
-					continue;
-
-				int decimation_mode = bsd->block_modes[quantized_weight[i]].decimation_mode;
-				const decimation_table *it = ixtab2[decimation_mode];
-
-				uint8_t *u8_weight1_src = u8_quantized_decimated_quantized_weights + MAX_WEIGHTS_PER_BLOCK * (2 * quantized_weight[i]);
-				uint8_t *u8_weight2_src = u8_quantized_decimated_quantized_weights + MAX_WEIGHTS_PER_BLOCK * (2 * quantized_weight[i] + 1);
-
-				int adjustments = realign_weights(decode_mode,
-					xdim, ydim, zdim,
-					blk, ewb, &scb[i],
-					u8_weight1_src,
-					u8_weight2_src);
-
-				if (adjustments == 0)
-					tmpplanes.scb_stat[blk_idx] |= 0x10 << i;
-			}
 		}
 
+
+		for (int scb_idx = 0; scb_idx < batch_size * SCB_CANDIDATES; scb_idx++)
+		{
+			int blk_idx = scb_idx >> 2;
+			int scb_off = scb_idx & 0x03;
+			if (tmpplanes.scb_stat[blk_idx] & (0x11 << scb_off))
+				continue;
+		
+			const imageblock * blk = &blk_batch[blk_idx];
+			const error_weight_block *ewb = &ewb_batch[blk_idx];
+
+			int decimation_mode = tmpplanes.per_scb.decimation_mode[scb_idx];
+			const decimation_table *it = ixtab2[decimation_mode];
+
+			uint8_t *u8_weight1_src = &tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * (2 * scb_idx)];
+			uint8_t *u8_weight2_src = &tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * (2 * scb_idx + 1)];
+
+			int adjustments = realign_weights(decode_mode,
+				xdim, ydim, zdim,
+				blk, ewb, &scb_candidates[scb_idx],
+				u8_weight1_src,
+				u8_weight2_src);
+
+			if (adjustments == 0)
+				tmpplanes.scb_stat[blk_idx] |= 0x10 << scb_off;
+		}
 	}
 
 	for (int scb_idx = 0; scb_idx < batch_size * SCB_CANDIDATES; scb_idx++)
@@ -1858,14 +1885,11 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(f
 		if (tmpplanes.scb_stat[blk_idx] & (1 << scb_off))
 			continue;
 
-		const uint8_t *u8_quantized_decimated_quantized_weights = &tmpplanes.u8_quantized_decimated_quantized_weights[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		const int quantized_weight = tmpplanes.quantized_weight[scb_idx];
-
-		int decimation_mode = bsd->block_modes[quantized_weight].decimation_mode;
+		int decimation_mode = tmpplanes.per_scb.decimation_mode[scb_idx];
 		const decimation_table *it = ixtab2[decimation_mode];
 
-		const uint8_t *u8_weight1_src = u8_quantized_decimated_quantized_weights + MAX_WEIGHTS_PER_BLOCK * (2 * quantized_weight);
-		const uint8_t *u8_weight2_src = u8_quantized_decimated_quantized_weights + MAX_WEIGHTS_PER_BLOCK * (2 * quantized_weight + 1);
+		const uint8_t *u8_weight1_src = &tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * (2 * scb_idx)];
+		const uint8_t *u8_weight2_src = &tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * (2 * scb_idx + 1)];
 		int weights_to_copy = it->num_weights;
 
 		for (int j = 0; j < weights_to_copy; j++)
