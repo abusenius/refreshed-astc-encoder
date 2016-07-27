@@ -173,6 +173,140 @@ void astc_codec_internal_error(const char *filename, int linenum)
 	exit(1);
 }
 
+void show_ptab_info()
+{
+	int xdim[24] = { 4, 5, 5, 6, 6, 8, 8, 10, 10, 8, 10, 10, 12, 12, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6 };
+	int ydim[24] = { 4, 4, 5, 5, 6, 5, 6,  5,  6, 8,  8, 10, 10, 12, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6 };
+	int zdim[24] = { 1, 1, 1, 1, 1, 1, 1,  1,  1, 1,  1,  1,  1,  1, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6 };
+
+	const partition_statistics *pstat2, *pstat3, *pstat4;
+
+	int n2, n3, n3_2, n3_3, n4, n4_2, n4_3, n4_4;
+	printf("#\tSize\t P2\t P3 (p2, p3) \t    P4 (p2, p3, p4)");
+	for (int size = 0; size < 24; size++)
+	{
+		pstat2 = get_partition_stats(xdim[size], ydim[size], zdim[size], 2);
+		pstat3 = get_partition_stats(xdim[size], ydim[size], zdim[size], 3);
+		pstat4 = get_partition_stats(xdim[size], ydim[size], zdim[size], 4);
+
+		n2 = pstat2->unique_partitionings;
+		n3 = pstat3->unique_partitionings;
+		n3_2 = pstat3->unique_partitionings_with_2_partitions;
+		n3_3 = pstat3->unique_partitionings_with_3_partitions;
+		n4 = pstat4->unique_partitionings;
+		n4_2 = pstat4->unique_partitionings_with_2_partitions;
+		n4_3 = pstat4->unique_partitionings_with_3_partitions;
+		n4_4 = pstat4->unique_partitionings_with_4_partitions;
+
+		if (size == 14)
+			printf("\n");
+
+		if (zdim[size] > 1)
+			printf("\n%i 3D\t%ix%ix%i\t", size + 1, xdim[size], ydim[size], zdim[size]);
+		else
+			printf("\n%i\t%ix%i\t", size + 1, xdim[size], ydim[size]);
+
+		printf("%i %7i (%3i, %3i) %7i (%3i, %3i, %3i)", n2, n3, n3_2, n3_3, n4, n4_2, n4_3, n4_4);
+	}
+}
+
+// default block_mode_cutoff
+//       -veryfast   : 0.25f
+//       -fast       : 0.50f
+//       -medium     : 0.75f
+//       -thorough   : 0.95f
+//       -exhaustive : 1.00f
+void show_bsd_info(float block_mode_cutoff = 0.75f)
+{
+	const block_size_descriptor *bsd;
+
+	int xdim[24] = { 4, 5, 5, 6, 6, 8, 8, 10, 10, 8, 10, 10, 12, 12, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6 };
+	int ydim[24] = { 4, 4, 5, 5, 6, 5, 6,  5,  6, 8,  8, 10, 10, 12, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6 };
+	int zdim[24] = { 1, 1, 1, 1, 1, 1, 1,  1,  1, 1,  1,  1,  1,  1, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6 };
+
+	int dec_modes_1p[2], dec_modes_2p[2], dec_modes, blk_modes_1p[2], blk_modes_2p[2], blk_modes[2], err;
+	printf("#\tSize\t Decimation Modes (87)  |          Block Modes (2048)");
+	printf(   "\n\t\t   1P        2P   Total |      1P          2P       Total");
+	for (int size = 0; size<24; size++) {
+		dec_modes_1p[0] = 0;
+		dec_modes_2p[0] = 0;
+		blk_modes_1p[0] = 0;
+		blk_modes_2p[0] = 0;
+		dec_modes_1p[1] = 0;
+		dec_modes_2p[1] = 0;
+		blk_modes_1p[1] = 0;
+		blk_modes_2p[1] = 0;
+		dec_modes = 0;
+		err = 0;
+
+		bsd = get_block_size_descriptor(xdim[size], ydim[size], zdim[size]);
+		for (int i = 0; i < MAX_DECIMATION_MODES; i++)
+		{
+			int quant_mode1 = bsd->decimation_mode_maxprec_1plane[i];
+			int quant_mode2 = bsd->decimation_mode_maxprec_2planes[i];
+			float percentile = bsd->decimation_mode_percentile[i];
+			int permit_encode = bsd->permit_encode[i];
+
+			if (permit_encode == 0)
+				continue;
+
+			dec_modes++;
+			if (quant_mode1 >= 0)
+			{
+				dec_modes_1p[1]++;
+				if (percentile > block_mode_cutoff)
+					dec_modes_1p[0]--;
+			}
+
+			if (quant_mode2 >= 0)
+			{
+				dec_modes_2p[1]++;
+				if (percentile > block_mode_cutoff)
+					dec_modes_2p[0]--;
+			}
+		}
+		dec_modes_1p[0] += dec_modes_1p[1];
+		dec_modes_2p[0] += dec_modes_2p[1];
+
+
+		for (int i = 0; i < MAX_WEIGHT_MODES; i++)
+		{
+			if (bsd->block_modes[i].permit_encode)
+			{
+				int decimation_mode = bsd->block_modes[i].decimation_mode;
+				float percentile = bsd->block_modes[i].percentile;
+				if (bsd->block_modes[i].is_dual_plane)
+				{
+					blk_modes_2p[1]++;
+					if (percentile > block_mode_cutoff)
+						blk_modes_2p[0]--;
+				}
+				else
+				{
+					blk_modes_1p[1]++;
+					if (percentile > block_mode_cutoff)
+						blk_modes_1p[0]--;
+				}
+			}
+		}
+		blk_modes_1p[0] += blk_modes_1p[1];
+		blk_modes_2p[0] += blk_modes_2p[1];
+		blk_modes[0] = blk_modes_1p[0] + blk_modes_2p[0];
+		blk_modes[1] = blk_modes_1p[1] + blk_modes_2p[1];
+
+		if (size == 14)
+			printf("\n");
+
+		if (zdim[size] > 1)
+			printf("\n%i 3D\t%ix%ix%i\t", size + 1, xdim[size], ydim[size], zdim[size]);
+		else
+			printf("\n%i\t%ix%i\t", size + 1, xdim[size], ydim[size]);
+
+		printf("%2i / %2i   %2i / %2i %4i", dec_modes_1p[0], dec_modes_1p[1], dec_modes_2p[0], dec_modes_2p[1], dec_modes);
+		printf("  |  %3i / %3i   %3i / %3i  %3i / %3i", blk_modes_1p[0], blk_modes_1p[1], blk_modes_2p[0], blk_modes_2p[1], blk_modes[0], blk_modes[1]);
+	}
+}
+
 #define MAGIC_FILE_CONSTANT 0x5CA1AB13
 
 struct astc_header

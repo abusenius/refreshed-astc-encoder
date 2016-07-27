@@ -143,8 +143,8 @@ typedef struct
 
 typedef struct
 {
-	uint16_t unique_partitionings;
-	uint16_t unique_partitionings_with_all_partitions;
+	uint16_t unique_partitionings;  // total
+	uint16_t unique_partitionings_with_all_partitions; //without empty partitions for current partition count
 	uint16_t unique_partitionings_with_2_partitions;
 	uint16_t unique_partitionings_with_3_partitions;
 	uint16_t unique_partitionings_with_4_partitions;
