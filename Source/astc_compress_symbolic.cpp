@@ -816,6 +816,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 
 	memset(blk_stat.host_ptr, BLOCK_STAT_SKIP_ALL, sizeof(uint8_t) * batch_size);
 
+	// compress constant-color blocks
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 	{
 		const imageblock * blk = &blk_batch[blk_idx];
@@ -871,8 +872,6 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 		}
 		else
 		{
-			const imageblock * blk = &blk_batch[blk_idx];
-			symbolic_compressed_block * scb = &scb_batch[blk_idx];
 			error_weight_block *ewb = &ewb_batch[blk_idx];
 			error_weight_sum_batch[blk_idx] = prepare_error_weight_block(input_image, xdim, ydim, zdim, &ewp, blk, ewb);
 			error_of_best_block[blk_idx] = 1e20f;
@@ -907,42 +906,30 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 	ewb_batch.write_to_device();
 
 
-	float mode_cutoff = ewp.block_mode_cutoff;
 	float best_errorval_in_mode;
 	int i, j;
 	uint8_t skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
 
 
 	// next, test mode #0. This mode uses 1 plane of weights and 1 partition.
-	// we test it twice, first with a modecutoff of 0, then with the specified mode-cutoff.
-	// This causes an early-out that speeds up encoding of "easy" content.
-	float modecutoffs[2];
-	float errorval_mult[2] = { 2.5, 1 };
-	modecutoffs[0] = 0;
-	modecutoffs[1] = mode_cutoff;
-
-	for (i = 0; i < 2; i++)
-	{
-		compress_symbolic_batch_fixed_partition_1_plane(modecutoffs[i], 1, 0, blk_batch, scb_candidates);
+	compress_symbolic_batch_fixed_partition_1_plane(1, 0, blk_batch, scb_candidates);
 		
-		for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+	{
+		if (blk_stat[blk_idx] & skip_mode)
+			continue;
+
+		FIND_BEST_SCB_CANDIDATES(0);
+		best_errorvals_in_1pl_1partition_mode[blk_idx] = error_of_best_block[blk_idx];
+		if ((error_of_best_block[blk_idx] / error_weight_sum_batch[blk_idx]) < ewp.texel_avg_error_limit)
 		{
-			if (blk_stat[blk_idx] & skip_mode)
-				continue;
-
-			FIND_BEST_SCB_CANDIDATES(0);
-			error_of_best_block[blk_idx] *= errorval_mult[i];
-			best_errorvals_in_1pl_1partition_mode[blk_idx] = error_of_best_block[blk_idx];
-			if ((error_of_best_block[blk_idx] / error_weight_sum_batch[blk_idx]) < ewp.texel_avg_error_limit)
-			{
-				blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
-				total_finished_blocks++;
-			};
-		}
-
-		if (total_finished_blocks == batch_size)
-			return;
+			blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+			total_finished_blocks++;
+		};
 	}
+
+	if (total_finished_blocks == batch_size)
+		return;
 
 	//prepare block statistics
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
@@ -984,7 +971,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 		if (i == 3)
 			skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF | BLOCK_STAT_LOWEST_CORREL_CUTOFF | BLOCK_STAT_NO_ALPHA;
 
-		compress_symbolic_batch_fixed_partition_2_planes(mode_cutoff, 1, 0, i, blk_batch, scb_candidates, skip_mode);
+		compress_symbolic_batch_fixed_partition_2_planes(1, 0, i, blk_batch, scb_candidates, skip_mode);
 
 		for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 		{
@@ -1014,7 +1001,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 		skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
 		for (i = 0; i < 2; i++)
 		{
-			compress_symbolic_batch_fixed_partition_1_plane(mode_cutoff, partition_count, i, blk_batch, scb_candidates);
+			compress_symbolic_batch_fixed_partition_1_plane(partition_count, i, blk_batch, scb_candidates);
 			
 			for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 			{
@@ -1055,7 +1042,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 		skip_mode = BLOCK_STAT_LOWEST_CORREL_CUTOFF | BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
 		for (i = 0; i < 2; i++)
 		{
-			compress_symbolic_batch_fixed_partition_2_planes(mode_cutoff, partition_count, i, 0, blk_batch, scb_candidates, skip_mode);
+			compress_symbolic_batch_fixed_partition_2_planes(partition_count, i, 0, blk_batch, scb_candidates, skip_mode);
 			
 			for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 			{
@@ -1154,9 +1141,10 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 
 // function for compressing a block symbolically, given
 // that we have already decided on a partition
-void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(float mode_cutoff, int partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates)
+void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(int partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates)
 {
 	static const int free_bits_for_partition_count_1plane[5] = { 0, 115 - 4, 111 - 4 - PARTITION_BITS, 108 - 4 - PARTITION_BITS, 105 - 4 - PARTITION_BITS };
+	float mode_cutoff = ewp.block_mode_cutoff;
 
 	const block_size_descriptor *bsd = get_block_size_descriptor(xdim, ydim, zdim);
 	const decimation_table *const *ixtab2 = bsd->decimation_tables;
@@ -1492,9 +1480,10 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(fl
 }
 
 
-void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(float mode_cutoff, int partition_count, int partition_offset, int separate_component, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates, uint8_t skip_mode)
+void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(int partition_count, int partition_offset, int separate_component, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates, uint8_t skip_mode)
 {
 	static const int free_bits_for_partition_count_2planes[5] = { 0, 113 - 4, 109 - 4 - PARTITION_BITS, 106 - 4 - PARTITION_BITS, 103 - 4 - PARTITION_BITS };
+	float mode_cutoff = ewp.block_mode_cutoff;
 
 	const block_size_descriptor *bsd = get_block_size_descriptor(xdim, ydim, zdim);
 	const decimation_table *const *ixtab2 = bsd->decimation_tables;
