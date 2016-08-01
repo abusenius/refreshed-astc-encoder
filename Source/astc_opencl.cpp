@@ -130,7 +130,7 @@ static cl_int readSource(const char *sourcePath, const char *sourceFilename, cha
 	return CL_SUCCESS;
 }
 
-void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode, int batch_size, int xdim, int ydim, int zdim, int plimit, astc_decode_mode decode_mode)
+void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode, int batch_size, int xdim, int ydim, int zdim, const error_weighting_params * ewp, astc_decode_mode decode_mode)
 {
 	cl_uint numPlatforms = 0;
 	cl_uint numDevices = 0;
@@ -210,7 +210,7 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 	char compileOptions[4096];
 	setlocale(LC_NUMERIC, "C");
 	sprintf(compileOptions, "%s -I %s -D XDIM=%i -D YDIM=%i -D ZDIM=%i -D TEXELS_PER_BLOCK=%i -D WEIGHT_IMPRECISION_ESTIM_SQUARED=%gf -D PLIMIT=%i %s",
-		OPENCL_COMPILER_OPTIONS, OPENCL_KERNELS_SOURCE_PATH, xdim, ydim, zdim, texels_per_block, weight_imprecision_estim_squared, plimit, compile_flags);
+		OPENCL_COMPILER_OPTIONS, OPENCL_KERNELS_SOURCE_PATH, xdim, ydim, zdim, texels_per_block, weight_imprecision_estim_squared, ewp->partition_search_limit, compile_flags);
 	if (!silentmode)
 		printf("Batch size: %i\nOpenCL compiler options:\n%s\n\n", batch_size, compileOptions);
 

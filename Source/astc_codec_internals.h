@@ -187,7 +187,6 @@ typedef struct
 	int8_t is_dual_plane;
 	int8_t permit_encode;
 	int8_t permit_decode;
-	int8_t padding[3]; // to match OpenCL struct alignment
 } block_mode;
 
 
@@ -281,6 +280,10 @@ typedef struct
 	float partition_1_to_2_limit;
 	float lowest_correlation_cutoff;
 	int max_refinement_iters;
+	int decimation_mode_limit_1plane;
+	int decimation_mode_limit_2planes;
+	int weight_mode_limit_1plane;
+	int weight_mode_limit_2planes;
 } error_weighting_params;
 
 

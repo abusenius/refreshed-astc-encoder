@@ -37,7 +37,7 @@ extern cl_context opencl_context;
 
 
 
-void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode, int batch_size, int xdim, int ydim, int zdim, int plimit, astc_decode_mode decode_mode);
+void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode, int batch_size, int xdim, int ydim, int zdim, const error_weighting_params* ewp, astc_decode_mode decode_mode);
 void destroy_opencl();
 char const* cl_errcode_to_str(cl_int status);
 
