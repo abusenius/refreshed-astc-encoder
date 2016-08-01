@@ -13,9 +13,10 @@
     // included from OpenCL kernel
 	#define OPENCL_C_KERNEL
 
-	typedef unsigned char uint8_t;
 	typedef signed char int8_t;
+	typedef signed short int16_t;
 	typedef ulong uint64_t;
+	typedef unsigned char uint8_t;
 	typedef unsigned short uint16_t;
 #else
 	// just to make IDE happy with OpenCL keywords and macros

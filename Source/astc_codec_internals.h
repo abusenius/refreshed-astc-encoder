@@ -210,6 +210,27 @@ typedef struct
 	int texels_for_bitmap_partitioning[64];
 } block_size_descriptor;
 
+// version of block_mode struct that is used in block_size_descriptor_sorted
+typedef struct
+{
+	int8_t sorted_decimation_mode;
+	int8_t quantization_mode;
+	int16_t block_mode; // value to fill "Block mode" field in physical block
+} block_mode_light;
+
+// special version of block_size_descriptor struct
+// with decimation modes and block modes sorted by the percentile value.
+typedef struct
+{
+	// we use sepparate descriptors for single and dual plane blocks
+	// so only (MAX_WEIGHT_MODES / 2) weight modes needed
+	block_mode_light block_modes[MAX_WEIGHT_MODES / 2];
+	int decimation_mode_samples[MAX_DECIMATION_MODES];
+	int decimation_mode_maxprec[MAX_DECIMATION_MODES];
+	float decimation_mode_percentile[MAX_DECIMATION_MODES];
+	const decimation_table *decimation_tables[MAX_DECIMATION_MODES];
+} block_size_descriptor_sorted;
+
 // data structure representing one block of an image.
 // it is expanded to float prior to processing to save some computation time
 // on conversions to/from uint8_t (this also allows us to handle hdr textures easily)
@@ -421,6 +442,7 @@ typedef struct
 
 
 const block_size_descriptor *get_block_size_descriptor(int xdim, int ydim, int zdim);
+const block_size_descriptor_sorted *get_sorted_block_size_descriptor(int xdim, int ydim, int zdim, int is_dual_plane);
 
 // ***********************************************************
 // functions and data pertaining to quantization and encoding

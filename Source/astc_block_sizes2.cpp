@@ -17,6 +17,15 @@
 #include "astc_codec_internals.h"
 #include "math.h"
 
+struct block_size_info
+{
+	block_size_descriptor bsd;
+	block_size_descriptor_sorted bsd_1plane;
+	block_size_descriptor_sorted bsd_2planes;
+};
+
+static block_size_info *bsd_pointers[4096];
+
 extern const float percentile_table_4x4[2048];
 extern const float percentile_table_4x5[2048];
 extern const float percentile_table_4x6[2048];
@@ -762,10 +771,10 @@ void construct_block_size_descriptor_2d(int xdim, int ydim, block_size_descripto
 			bsd->block_modes[i].permit_decode = permit_encode;	// disallow decode of grid size larger than block size.
 			bsd->block_modes[i].percentile = percentiles[i];
 
-			if (bsd->decimation_mode_percentile_1plane[decimation_mode] > percentiles[i] && !is_dual_plane)
+			if (bsd->decimation_mode_percentile_1plane[decimation_mode] > percentiles[i] && !is_dual_plane && permit_encode)
 				bsd->decimation_mode_percentile_1plane[decimation_mode] = percentiles[i];
 
-			if (bsd->decimation_mode_percentile_2planes[decimation_mode] > percentiles[i] && is_dual_plane)
+			if (bsd->decimation_mode_percentile_2planes[decimation_mode] > percentiles[i] && is_dual_plane && permit_encode)
 				bsd->decimation_mode_percentile_2planes[decimation_mode] = percentiles[i];
 		}
 
@@ -918,10 +927,10 @@ void construct_block_size_descriptor_3d(int xdim, int ydim, int zdim, block_size
 			bsd->block_modes[i].permit_decode = permit_encode;
 			bsd->block_modes[i].percentile = percentiles[i];
 
-			if (bsd->decimation_mode_percentile_1plane[decimation_mode] > percentiles[i] && !is_dual_plane)
+			if (bsd->decimation_mode_percentile_1plane[decimation_mode] > percentiles[i] && !is_dual_plane && permit_encode)
 				bsd->decimation_mode_percentile_1plane[decimation_mode] = percentiles[i];
 
-			if (bsd->decimation_mode_percentile_2planes[decimation_mode] > percentiles[i] && is_dual_plane)
+			if (bsd->decimation_mode_percentile_2planes[decimation_mode] > percentiles[i] && is_dual_plane && permit_encode)
 				bsd->decimation_mode_percentile_2planes[decimation_mode] = percentiles[i];
 		}
 
@@ -963,9 +972,89 @@ void construct_block_size_descriptor_3d(int xdim, int ydim, int zdim, block_size
 }
 
 
+static void sort_decimation_modes(const block_size_descriptor * bsd, int is_dual_plane, block_size_descriptor_sorted *sorted_bsd, int * decimation_mode_mapping)
+{
+	float percentiles[MAX_DECIMATION_MODES];
+	int valid_modes = 0;
 
+	for (int i = 0; i < MAX_DECIMATION_MODES; i++)
+	{
+		percentiles[i] = is_dual_plane ? bsd->decimation_mode_percentile_2planes[i] : bsd->decimation_mode_percentile_1plane[i];
 
-static block_size_descriptor *bsd_pointers[4096];
+		if (percentiles[i] <= 1.0f)
+			valid_modes++;
+	}
+
+	for (int i = 0; i < valid_modes; i++)
+	{
+		float lowest_percentile = INFINITY;
+		int best_mode = -1;
+		for (int j = 0; j < MAX_DECIMATION_MODES; j++)
+		{
+			if (percentiles[j] < lowest_percentile)
+			{
+				lowest_percentile = percentiles[j];
+				best_mode = j;
+			}
+		}
+
+		percentiles[best_mode] = INFINITY;
+		decimation_mode_mapping[best_mode] = i;
+		int maxprec = is_dual_plane ? bsd->decimation_mode_maxprec_2planes[best_mode] : bsd->decimation_mode_maxprec_1plane[best_mode];
+		sorted_bsd->decimation_mode_maxprec[i] = maxprec;
+		sorted_bsd->decimation_mode_percentile[i] = lowest_percentile;
+		sorted_bsd->decimation_mode_samples[i] = bsd->decimation_mode_samples[best_mode];
+		sorted_bsd->decimation_tables[i] = bsd->decimation_tables[best_mode];
+	}
+}
+
+static void sort_weight_modes(const block_size_descriptor * bsd, int is_dual_plane, block_size_descriptor_sorted *sorted_bsd, const int * decimation_mode_mapping)
+{
+	float percentiles[MAX_WEIGHT_MODES];
+	int valid_modes = 0;
+
+	for (int i = 0; i < MAX_WEIGHT_MODES; i++)
+	{
+		percentiles[i] = bsd->block_modes[i].percentile;
+
+		if ((bsd->block_modes[i].permit_encode) && (is_dual_plane == bsd->block_modes[i].is_dual_plane))
+			valid_modes++;
+	}
+
+	for (int i = 0; i < valid_modes; i++)
+	{
+		float lowest_percentile = INFINITY;
+		int best_block_mode = -1;
+		for (int j = 0; j < MAX_WEIGHT_MODES; j++)
+		{
+			if ((bsd->block_modes[j].is_dual_plane != is_dual_plane) || !bsd->block_modes[j].permit_encode)
+				continue;
+
+			if (percentiles[j] < lowest_percentile)
+			{
+				lowest_percentile = percentiles[j];
+				best_block_mode = j;
+			}
+		}
+
+		percentiles[best_block_mode] = INFINITY;
+		int old_decimated_mode = bsd->block_modes[best_block_mode].decimation_mode;
+		sorted_bsd->block_modes[i].block_mode = best_block_mode;
+		sorted_bsd->block_modes[i].quantization_mode = bsd->block_modes[best_block_mode].quantization_mode;
+		sorted_bsd->block_modes[i].sorted_decimation_mode = decimation_mode_mapping[old_decimated_mode];
+	}
+}
+
+static void construct_sorted_block_size_descriptors(const block_size_descriptor * bsd, block_size_descriptor_sorted *sorted_bsd, int is_dual_plane)
+{
+	int decimation_mode_map[MAX_DECIMATION_MODES];
+
+	memset(sorted_bsd, -1, sizeof(block_size_descriptor_sorted));
+
+	sort_decimation_modes(bsd, is_dual_plane, sorted_bsd, decimation_mode_map);
+	sort_weight_modes(bsd, is_dual_plane, sorted_bsd, decimation_mode_map);
+}
+
 
 // function to obtain a block size descriptor. If the descriptor does not exist,
 // it is created as needed. Should not be called from within multithreaded code.
@@ -974,13 +1063,31 @@ const block_size_descriptor *get_block_size_descriptor(int xdim, int ydim, int z
 	int bsd_index = xdim + (ydim << 4) + (zdim << 8);
 	if (bsd_pointers[bsd_index] == NULL)
 	{
-		block_size_descriptor *bsd = new block_size_descriptor;
+		block_size_info *bsd_info = new block_size_info;
+		block_size_descriptor *bsd = &bsd_info->bsd;
 		if (zdim > 1)
 			construct_block_size_descriptor_3d(xdim, ydim, zdim, bsd);
 		else
 			construct_block_size_descriptor_2d(xdim, ydim, bsd);
 
-		bsd_pointers[bsd_index] = bsd;
+		construct_sorted_block_size_descriptors(bsd, &bsd_info->bsd_1plane, 0);
+		construct_sorted_block_size_descriptors(bsd, &bsd_info->bsd_2planes, 1);
+
+		bsd_pointers[bsd_index] = bsd_info;
 	}
-	return bsd_pointers[bsd_index];
+	return &bsd_pointers[bsd_index]->bsd;
+}
+
+const block_size_descriptor_sorted *get_sorted_block_size_descriptor(int xdim, int ydim, int zdim, int is_dual_plane)
+{
+	int bsd_index = xdim + (ydim << 4) + (zdim << 8);
+	if (bsd_pointers[bsd_index] == NULL)
+	{
+		// construct bsd
+		get_block_size_descriptor(xdim, ydim, zdim);
+	}
+
+	block_size_info *bsd_info = bsd_pointers[bsd_index];
+
+	return is_dual_plane ? &(bsd_info->bsd_2planes) : &(bsd_info->bsd_1plane);
 }
