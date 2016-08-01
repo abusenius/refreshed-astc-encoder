@@ -244,7 +244,8 @@ void show_bsd_info(float block_mode_cutoff = 0.75f)
 		{
 			int quant_mode1 = bsd->decimation_mode_maxprec_1plane[i];
 			int quant_mode2 = bsd->decimation_mode_maxprec_2planes[i];
-			float percentile = bsd->decimation_mode_percentile[i];
+			float percentile_1p = bsd->decimation_mode_percentile_1plane[i];
+			float percentile_2p = bsd->decimation_mode_percentile_2planes[i];
 			int permit_encode = bsd->permit_encode[i];
 
 			if (permit_encode == 0)
@@ -254,14 +255,14 @@ void show_bsd_info(float block_mode_cutoff = 0.75f)
 			if (quant_mode1 >= 0)
 			{
 				dec_modes_1p[1]++;
-				if (percentile > block_mode_cutoff)
+				if (percentile_1p > block_mode_cutoff)
 					dec_modes_1p[0]--;
 			}
 
 			if (quant_mode2 >= 0)
 			{
 				dec_modes_2p[1]++;
-				if (percentile > block_mode_cutoff)
+				if (percentile_2p > block_mode_cutoff)
 					dec_modes_2p[0]--;
 			}
 		}

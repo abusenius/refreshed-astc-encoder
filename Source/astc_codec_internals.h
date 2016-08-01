@@ -197,7 +197,8 @@ typedef struct
 	int decimation_mode_samples[MAX_DECIMATION_MODES];
 	int decimation_mode_maxprec_1plane[MAX_DECIMATION_MODES];
 	int decimation_mode_maxprec_2planes[MAX_DECIMATION_MODES];
-	float decimation_mode_percentile[MAX_DECIMATION_MODES];
+	float decimation_mode_percentile_1plane[MAX_DECIMATION_MODES];
+	float decimation_mode_percentile_2planes[MAX_DECIMATION_MODES];
 	int permit_encode[MAX_DECIMATION_MODES];
 	const decimation_table *decimation_tables[MAX_DECIMATION_MODES + 1];
 	block_mode block_modes[MAX_WEIGHT_MODES];

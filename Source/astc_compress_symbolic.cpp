@@ -1181,7 +1181,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 		// (that is, weights computed with the assumption that they are not quantized)
 		for (int i = 0; i < MAX_DECIMATION_MODES; i++)
 		{
-			if (bsd->permit_encode[i] == 0 || bsd->decimation_mode_maxprec_1plane[i] < 0 || bsd->decimation_mode_percentile[i] > mode_cutoff)
+			if (bsd->permit_encode[i] == 0 || bsd->decimation_mode_maxprec_1plane[i] < 0 || bsd->decimation_mode_percentile_1plane[i] > mode_cutoff)
 				continue;
 			eix[i] = *ei;
 			compute_ideal_weights_for_decimation_table(&(eix[i]), ixtab2[i], decimated_quantized_weights + i * MAX_WEIGHTS_PER_BLOCK, decimated_weights + i * MAX_WEIGHTS_PER_BLOCK);
@@ -1268,7 +1268,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 				weight_high_value[i] = 1.0f;
 
 			int decimation_mode = bsd->block_modes[i].decimation_mode;
-			if (bsd->decimation_mode_percentile[decimation_mode] > mode_cutoff)
+			if (bsd->decimation_mode_percentile_1plane[decimation_mode] > mode_cutoff)
 				ASTC_CODEC_INTERNAL_ERROR;
 
 
@@ -1522,7 +1522,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 		// for each decimation mode, compute an ideal set of weights
 		for (int i = 0; i < MAX_DECIMATION_MODES; i++)
 		{
-			if (bsd->permit_encode[i] == 0 || bsd->decimation_mode_maxprec_2planes[i] < 0 || bsd->decimation_mode_percentile[i] > mode_cutoff)
+			if (bsd->permit_encode[i] == 0 || bsd->decimation_mode_maxprec_2planes[i] < 0 || bsd->decimation_mode_percentile_2planes[i] > mode_cutoff)
 				continue;
 
 			eix1[i] = *ei1;

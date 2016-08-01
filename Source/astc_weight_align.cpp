@@ -523,7 +523,7 @@ void compute_angular_endpoints_1plane(float mode_cutoff, const block_size_descri
 	{
 		int samplecount = bsd->decimation_mode_samples[i];
 		int quant_mode = bsd->decimation_mode_maxprec_1plane[i];
-		float percentile = bsd->decimation_mode_percentile[i];
+		float percentile = bsd->decimation_mode_percentile_1plane[i];
 		int permit_encode = bsd->permit_encode[i];
 		if (permit_encode == 0 || samplecount < 1 || quant_mode < 0 || percentile > mode_cutoff)
 			continue;
@@ -565,7 +565,7 @@ void compute_angular_endpoints_2planes(float mode_cutoff,
 	{
 		int samplecount = bsd->decimation_mode_samples[i];
 		int quant_mode = bsd->decimation_mode_maxprec_2planes[i];
-		float percentile = bsd->decimation_mode_percentile[i];
+		float percentile = bsd->decimation_mode_percentile_2planes[i];
 		int permit_encode = bsd->permit_encode[i];
 		if (permit_encode == 0 || samplecount < 1 || quant_mode < 0 || percentile > mode_cutoff)
 			continue;

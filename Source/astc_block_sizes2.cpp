@@ -15,6 +15,7 @@
 /*----------------------------------------------------------------------------*/ 
 
 #include "astc_codec_internals.h"
+#include "math.h"
 
 extern const float percentile_table_4x4[2048];
 extern const float percentile_table_4x5[2048];
@@ -706,7 +707,8 @@ void construct_block_size_descriptor_2d(int xdim, int ydim, block_size_descripto
 
 	for (i = 0; i < MAX_DECIMATION_MODES; i++)
 	{
-		bsd->decimation_mode_percentile[i] = 1.0f;
+		bsd->decimation_mode_percentile_1plane[i] = INFINITY;
+		bsd->decimation_mode_percentile_2planes[i] = INFINITY;
 	}
 
 	for (i = decimation_mode_count; i < MAX_DECIMATION_MODES; i++)
@@ -760,8 +762,11 @@ void construct_block_size_descriptor_2d(int xdim, int ydim, block_size_descripto
 			bsd->block_modes[i].permit_decode = permit_encode;	// disallow decode of grid size larger than block size.
 			bsd->block_modes[i].percentile = percentiles[i];
 
-			if (bsd->decimation_mode_percentile[decimation_mode] > percentiles[i])
-				bsd->decimation_mode_percentile[decimation_mode] = percentiles[i];
+			if (bsd->decimation_mode_percentile_1plane[decimation_mode] > percentiles[i] && !is_dual_plane)
+				bsd->decimation_mode_percentile_1plane[decimation_mode] = percentiles[i];
+
+			if (bsd->decimation_mode_percentile_2planes[decimation_mode] > percentiles[i] && is_dual_plane)
+				bsd->decimation_mode_percentile_2planes[decimation_mode] = percentiles[i];
 		}
 
 	}
@@ -859,7 +864,8 @@ void construct_block_size_descriptor_3d(int xdim, int ydim, int zdim, block_size
 
 	for (i = 0; i < MAX_DECIMATION_MODES; i++)
 	{
-		bsd->decimation_mode_percentile[i] = 1.0f;
+		bsd->decimation_mode_percentile_1plane[i] = INFINITY;
+		bsd->decimation_mode_percentile_2planes[i] = INFINITY;
 	}
 
 	for (i = decimation_mode_count; i < MAX_DECIMATION_MODES; i++)
@@ -912,8 +918,11 @@ void construct_block_size_descriptor_3d(int xdim, int ydim, int zdim, block_size
 			bsd->block_modes[i].permit_decode = permit_encode;
 			bsd->block_modes[i].percentile = percentiles[i];
 
-			if (bsd->decimation_mode_percentile[decimation_mode] > percentiles[i])
-				bsd->decimation_mode_percentile[decimation_mode] = percentiles[i];
+			if (bsd->decimation_mode_percentile_1plane[decimation_mode] > percentiles[i] && !is_dual_plane)
+				bsd->decimation_mode_percentile_1plane[decimation_mode] = percentiles[i];
+
+			if (bsd->decimation_mode_percentile_2planes[decimation_mode] > percentiles[i] && is_dual_plane)
+				bsd->decimation_mode_percentile_2planes[decimation_mode] = percentiles[i];
 		}
 
 	}
