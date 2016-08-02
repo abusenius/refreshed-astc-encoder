@@ -25,7 +25,7 @@ struct compress_fixed_partition_buffers
 	{
 		endpoints* ep;
 		int *partition_format_specifiers;
-		int *quantized_weight;
+		int *weight_mode;
 		int *color_quantization_level;
 		int *color_quantization_level_mod;
 		int *decimation_mode;
