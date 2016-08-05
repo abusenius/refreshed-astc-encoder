@@ -1272,7 +1272,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 			int bits_used_by_weights = compute_ise_bitcount(ixtab3[decimation_mode]->num_weights,
 				(quantization_method)sorted_bsd->block_modes[i].quantization_mode);
 			int bitcount = free_bits_for_partition_count_1plane[partition_count] - bits_used_by_weights;
-			if (bitcount <= 0 || bits_used_by_weights < 24 || bits_used_by_weights > 96)
+			if (bitcount <= 0)
 			{
 				qwt_errors[i] = 1e38f;
 				continue;
@@ -1649,7 +1649,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 			int bits_used_by_weights = compute_ise_bitcount(2 * ixtab3[decimation_mode]->num_weights,
 				(quantization_method)sorted_bsd->block_modes[i].quantization_mode);
 			int bitcount = free_bits_for_partition_count_2planes[partition_count] - bits_used_by_weights;
-			if (bitcount <= 0 || bits_used_by_weights < 24 || bits_used_by_weights > 96)
+			if (bitcount <= 0)
 			{
 				qwt_errors[i] = 1e38f;
 				continue;
