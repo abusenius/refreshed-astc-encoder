@@ -511,7 +511,7 @@ void compute_angular_endpoints_for_quantization_levels(int samplecount, const fl
 // helper functions that will compute ideal angular-endpoints
 // for a given set of weights and a given block size descriptors
 
-void compute_angular_endpoints_1plane(float mode_cutoff, const block_size_descriptor * bsd,
+void compute_angular_endpoints_1plane(const error_weighting_params* ewp, const block_size_descriptor_sorted * bsds,
 									  const float *decimated_quantized_weights, const float *decimated_weights,
 									  float low_value[MAX_WEIGHT_MODES], float high_value[MAX_WEIGHT_MODES])
 {
@@ -519,27 +519,20 @@ void compute_angular_endpoints_1plane(float mode_cutoff, const block_size_descri
 	float low_values[MAX_DECIMATION_MODES][12];
 	float high_values[MAX_DECIMATION_MODES][12];
 
-	for (i = 0; i < MAX_DECIMATION_MODES; i++)
+	for (i = 0; i < ewp->decimation_mode_limit_1plane; i++)
 	{
-		int samplecount = bsd->decimation_mode_samples[i];
-		int quant_mode = bsd->decimation_mode_maxprec_1plane[i];
-		float percentile = bsd->decimation_mode_percentile_1plane[i];
-		int permit_encode = bsd->permit_encode[i];
-		if (permit_encode == 0 || samplecount < 1 || quant_mode < 0 || percentile > mode_cutoff)
-			continue;
-
+		int samplecount = bsds->decimation_mode_samples[i];
+		int quant_mode = bsds->decimation_mode_maxprec[i];
 
 		compute_angular_endpoints_for_quantization_levels(samplecount,
 														  decimated_quantized_weights + i * MAX_WEIGHTS_PER_BLOCK,
 														  decimated_weights + i * MAX_WEIGHTS_PER_BLOCK, quant_mode, low_values[i], high_values[i]);
 	}
 
-	for (i = 0; i < MAX_WEIGHT_MODES; i++)
+	for (i = 0; i < ewp->weight_mode_limit_1plane; i++)
 	{
-		if (bsd->block_modes[i].is_dual_plane != 0 || bsd->block_modes[i].percentile > mode_cutoff)
-			continue;
-		int quant_mode = bsd->block_modes[i].quantization_mode;
-		int decim_mode = bsd->block_modes[i].decimation_mode;
+		int quant_mode = bsds->block_modes[i].quantization_mode;
+		int decim_mode = bsds->block_modes[i].sorted_decimation_mode;
 
 		low_value[i] = low_values[decim_mode][quant_mode];
 		high_value[i] = high_values[decim_mode][quant_mode];
@@ -549,8 +542,8 @@ void compute_angular_endpoints_1plane(float mode_cutoff, const block_size_descri
 
 
 
-void compute_angular_endpoints_2planes(float mode_cutoff,
-									   const block_size_descriptor * bsd,
+void compute_angular_endpoints_2planes(const error_weighting_params* ewp,
+									   const block_size_descriptor_sorted * bsds,
 									   const float *decimated_quantized_weights,
 									   const float *decimated_weights,
 									   float low_value1[MAX_WEIGHT_MODES], float high_value1[MAX_WEIGHT_MODES], float low_value2[MAX_WEIGHT_MODES], float high_value2[MAX_WEIGHT_MODES])
@@ -561,14 +554,10 @@ void compute_angular_endpoints_2planes(float mode_cutoff,
 	float low_values2[MAX_DECIMATION_MODES][12];
 	float high_values2[MAX_DECIMATION_MODES][12];
 
-	for (i = 0; i < MAX_DECIMATION_MODES; i++)
+	for (i = 0; i < ewp->decimation_mode_limit_2planes; i++)
 	{
-		int samplecount = bsd->decimation_mode_samples[i];
-		int quant_mode = bsd->decimation_mode_maxprec_2planes[i];
-		float percentile = bsd->decimation_mode_percentile_2planes[i];
-		int permit_encode = bsd->permit_encode[i];
-		if (permit_encode == 0 || samplecount < 1 || quant_mode < 0 || percentile > mode_cutoff)
-			continue;
+		int samplecount = bsds->decimation_mode_samples[i];
+		int quant_mode = bsds->decimation_mode_maxprec[i];
 
 		compute_angular_endpoints_for_quantization_levels(samplecount,
 														  decimated_quantized_weights + 2 * i * MAX_WEIGHTS_PER_BLOCK,
@@ -580,12 +569,10 @@ void compute_angular_endpoints_2planes(float mode_cutoff,
 
 	}
 
-	for (i = 0; i < MAX_WEIGHT_MODES; i++)
+	for (i = 0; i < ewp->weight_mode_limit_2planes; i++)
 	{
-		if (bsd->block_modes[i].is_dual_plane != 1 || bsd->block_modes[i].percentile > mode_cutoff)
-			continue;
-		int quant_mode = bsd->block_modes[i].quantization_mode;
-		int decim_mode = bsd->block_modes[i].decimation_mode;
+		int quant_mode = bsds->block_modes[i].quantization_mode;
+		int decim_mode = bsds->block_modes[i].sorted_decimation_mode;
 
 		low_value1[i] = low_values1[decim_mode][quant_mode];
 		high_value1[i] = high_values1[decim_mode][quant_mode];

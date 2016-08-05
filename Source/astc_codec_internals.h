@@ -798,12 +798,12 @@ float prepare_error_weight_block(const astc_codec_image * input_image,
 // functions pertaining to weight alignment
 void prepare_angular_tables(void);
 
-void compute_angular_endpoints_1plane(float mode_cutoff,
-									  const block_size_descriptor * bsd,
+void compute_angular_endpoints_1plane(const error_weighting_params* ewp,
+									  const block_size_descriptor_sorted * bsds,
 									  const float *decimated_quantized_weights, const float *decimated_weights, float low_value[MAX_WEIGHT_MODES], float high_value[MAX_WEIGHT_MODES]);
 
-void compute_angular_endpoints_2planes(float mode_cutoff,
-									   const block_size_descriptor * bsd,
+void compute_angular_endpoints_2planes(const error_weighting_params* ewp,
+									   const block_size_descriptor_sorted * bsds,
 									   const float *decimated_quantized_weights,
 									   const float *decimated_weights,
 									   float low_value1[MAX_WEIGHT_MODES], float high_value1[MAX_WEIGHT_MODES], float low_value2[MAX_WEIGHT_MODES], float high_value2[MAX_WEIGHT_MODES]);
