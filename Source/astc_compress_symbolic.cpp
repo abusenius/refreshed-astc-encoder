@@ -1144,6 +1144,10 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(int partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates)
 {
 	static const int free_bits_for_partition_count_1plane[5] = { 0, 115 - 4, 111 - 4 - PARTITION_BITS, 108 - 4 - PARTITION_BITS, 105 - 4 - PARTITION_BITS };
+	// maximum bits available for weights = (ei_bits - color_bits)
+	// ei_bits - number of bits available for weights and color data if all color endpoints are of the same type
+	// color_bits - minimum number of bits needed to store color data (QUANT_5, FMT_LUMINANCE)
+	static const int max_weight_bits_for_partition_count_1plane[5] = { 0, 111 - 5, 99 - 10, 99 - 14, 99 - 19 };
 	float mode_cutoff = ewp.block_mode_cutoff;
 
 	const block_size_descriptor_sorted *sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 0);
@@ -1272,7 +1276,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 			int bits_used_by_weights = compute_ise_bitcount(ixtab3[decimation_mode]->num_weights,
 				(quantization_method)sorted_bsd->block_modes[i].quantization_mode);
 			int bitcount = free_bits_for_partition_count_1plane[partition_count] - bits_used_by_weights;
-			if (bitcount <= 0)
+			if (bits_used_by_weights > max_weight_bits_for_partition_count_1plane[partition_count])
 			{
 				qwt_errors[i] = 1e38f;
 				continue;
@@ -1474,6 +1478,10 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(int partition_count, int partition_offset, int separate_component, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates, uint8_t skip_mode)
 {
 	static const int free_bits_for_partition_count_2planes[5] = { 0, 113 - 4, 109 - 4 - PARTITION_BITS, 106 - 4 - PARTITION_BITS, 103 - 4 - PARTITION_BITS };
+	// maximum bits available for weights = (ei_bits - color_bits)
+	// ei_bits - number of bits available for weights and color data if all color endpoints are of the same type
+	// color_bits - minimum number of bits needed to store color data (QUANT_5, FMT_LUMINANCE)
+	static const int max_weight_bits_for_partition_count_2planes[5] = { 0, 109 - 5, 97 - 10, 97 - 14, 97 - 19 };
 	float mode_cutoff = ewp.block_mode_cutoff;
 
 	const block_size_descriptor_sorted *sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 1);
@@ -1649,7 +1657,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 			int bits_used_by_weights = compute_ise_bitcount(2 * ixtab3[decimation_mode]->num_weights,
 				(quantization_method)sorted_bsd->block_modes[i].quantization_mode);
 			int bitcount = free_bits_for_partition_count_2planes[partition_count] - bits_used_by_weights;
-			if (bitcount <= 0)
+			if (bits_used_by_weights > max_weight_bits_for_partition_count_2planes[partition_count])
 			{
 				qwt_errors[i] = 1e38f;
 				continue;
