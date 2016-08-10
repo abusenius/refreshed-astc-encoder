@@ -513,7 +513,7 @@ void compute_angular_endpoints_for_quantization_levels(int samplecount, const fl
 
 void compute_angular_endpoints_1plane(const error_weighting_params* ewp, const block_size_descriptor_sorted * bsds,
 									  const float *decimated_quantized_weights, const float *decimated_weights,
-									  float low_value[MAX_WEIGHT_MODES], float high_value[MAX_WEIGHT_MODES])
+									  float low_value[MAX_SORTED_WEIGHT_MODES], float high_value[MAX_SORTED_WEIGHT_MODES])
 {
 	int i;
 	float low_values[MAX_DECIMATION_MODES][12];
@@ -546,7 +546,7 @@ void compute_angular_endpoints_2planes(const error_weighting_params* ewp,
 									   const block_size_descriptor_sorted * bsds,
 									   const float *decimated_quantized_weights,
 									   const float *decimated_weights,
-									   float low_value1[MAX_WEIGHT_MODES], float high_value1[MAX_WEIGHT_MODES], float low_value2[MAX_WEIGHT_MODES], float high_value2[MAX_WEIGHT_MODES])
+									   float low_value1[MAX_SORTED_WEIGHT_MODES], float high_value1[MAX_SORTED_WEIGHT_MODES], float low_value2[MAX_SORTED_WEIGHT_MODES], float high_value2[MAX_SORTED_WEIGHT_MODES])
 {
 	int i;
 	float low_values1[MAX_DECIMATION_MODES][12];

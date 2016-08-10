@@ -759,7 +759,7 @@ void determine_optimal_set_of_endpoint_formats_to_use(int xdim, int ydim, int zd
 													  const endpoints * ep, 
 													  int separate_component,	// separate color component for 2-plane mode; -1 for single-plane mode
 													  // bitcounts and errors computed for the various quantization methods
-													  const int *qwt_bitcounts, const float *qwt_errors,
+													  const int *qwt_bitcounts, const float *qwt_errors, int weight_mode_limit,
 													  // output data
 													  int partition_format_specifiers[4*4], int quantized_weight[4],
 													  int quantization_level[4], int quantization_level_mod[4])
@@ -788,10 +788,10 @@ void determine_optimal_set_of_endpoint_formats_to_use(int xdim, int ydim, int zd
 	for (i = 0; i < partition_count; i++)
 		compute_color_error_for_every_integer_count_and_quantization_level(encode_hdr_rgb, encode_hdr_alpha, i, pt, &(eci[i]), ep, error_weightings, best_error[i], format_of_choice[i]);
 
-	float errors_of_best_combination[MAX_WEIGHT_MODES];
-	int best_quantization_levels[MAX_WEIGHT_MODES];
-	int best_quantization_levels_mod[MAX_WEIGHT_MODES];
-	int best_ep_formats[MAX_WEIGHT_MODES][4];
+	float errors_of_best_combination[MAX_SORTED_WEIGHT_MODES];
+	int best_quantization_levels[MAX_SORTED_WEIGHT_MODES];
+	int best_quantization_levels_mod[MAX_SORTED_WEIGHT_MODES];
+	int best_ep_formats[MAX_SORTED_WEIGHT_MODES][4];
 
 	// code for the case where the block contains 1 partition
 	if (partition_count == 1)
@@ -799,7 +799,7 @@ void determine_optimal_set_of_endpoint_formats_to_use(int xdim, int ydim, int zd
 		int best_quantization_level;
 		int best_format;
 		float error_of_best_combination;
-		for (i = 0; i < MAX_WEIGHT_MODES; i++)
+		for (i = 0; i < weight_mode_limit; i++)
 		{
 			if (qwt_errors[i] >= 1e29f)
 			{
@@ -831,7 +831,7 @@ void determine_optimal_set_of_endpoint_formats_to_use(int xdim, int ydim, int zd
 		two_partitions_find_best_combination_for_every_quantization_and_integer_count(best_error, format_of_choice, combined_best_error, formats_of_choice);
 
 
-		for (i = 0; i < MAX_WEIGHT_MODES; i++)
+		for (i = 0; i < weight_mode_limit; i++)
 		{
 			if (qwt_errors[i] >= 1e29f)
 			{
@@ -865,7 +865,7 @@ void determine_optimal_set_of_endpoint_formats_to_use(int xdim, int ydim, int zd
 
 		three_partitions_find_best_combination_for_every_quantization_and_integer_count(best_error, format_of_choice, combined_best_error, formats_of_choice);
 
-		for (i = 0; i < MAX_WEIGHT_MODES; i++)
+		for (i = 0; i < weight_mode_limit; i++)
 		{
 			if (qwt_errors[i] >= 1e29f)
 			{
@@ -899,7 +899,7 @@ void determine_optimal_set_of_endpoint_formats_to_use(int xdim, int ydim, int zd
 
 		four_partitions_find_best_combination_for_every_quantization_and_integer_count(best_error, format_of_choice, combined_best_error, formats_of_choice);
 
-		for (i = 0; i < MAX_WEIGHT_MODES; i++)
+		for (i = 0; i < weight_mode_limit; i++)
 		{
 			if (qwt_errors[i] >= 1e29f)
 			{
@@ -928,7 +928,7 @@ void determine_optimal_set_of_endpoint_formats_to_use(int xdim, int ydim, int zd
 	{
 		float best_ep_error = 1e30f;
 		int best_error_index = -1;
-		for (j = 0; j < MAX_WEIGHT_MODES; j++)
+		for (j = 0; j < weight_mode_limit; j++)
 		{
 			if (errors_of_best_combination[j] < best_ep_error && best_quantization_levels[j] >= 5)
 			{

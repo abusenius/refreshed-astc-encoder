@@ -2638,7 +2638,7 @@ int main(int argc, char **argv)
 			break;
 	ewp.decimation_mode_limit_1plane = i;
 
-	for ( i = 0; i < MAX_WEIGHT_MODES; i++)
+	for ( i = 0; i < MAX_SORTED_WEIGHT_MODES; i++)
 	{
 		int block_mode = sorted_bsd->block_modes[i].block_mode;
 		if (block_mode < 0)
@@ -2656,7 +2656,7 @@ int main(int argc, char **argv)
 			break;
 	ewp.decimation_mode_limit_2planes = i;
 
-	for (i = 0; i < MAX_WEIGHT_MODES; i++)
+	for (i = 0; i < MAX_SORTED_WEIGHT_MODES; i++)
 	{
 		int block_mode = sorted_bsd->block_modes[i].block_mode;
 		if (block_mode < 0)

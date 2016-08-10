@@ -64,6 +64,7 @@
 #define TEXEL_WEIGHT_SUM 16
 #define MAX_DECIMATION_MODES 87
 #define MAX_WEIGHT_MODES 2048
+#define MAX_SORTED_WEIGHT_MODES 1024
 
 // error reporting for codec internal errors.
 #define ASTC_CODEC_INTERNAL_ERROR astc_codec_internal_error(__FILE__, __LINE__)
@@ -223,7 +224,7 @@ typedef struct
 {
 	// we use sepparate descriptors for single and dual plane blocks
 	// so only (MAX_WEIGHT_MODES / 2) weight modes needed
-	block_mode_light block_modes[MAX_WEIGHT_MODES / 2];
+	block_mode_light block_modes[MAX_SORTED_WEIGHT_MODES];
 	int decimation_mode_samples[MAX_DECIMATION_MODES];
 	int decimation_mode_maxprec[MAX_DECIMATION_MODES];
 	float decimation_mode_percentile[MAX_DECIMATION_MODES];
@@ -769,7 +770,7 @@ void compute_encoding_choice_errors(int xdim, int ydim, int zdim, const imageblo
 void determine_optimal_set_of_endpoint_formats_to_use(int xdim, int ydim, int zdim, const partition_info * pt, const imageblock * blk, const error_weight_block * ewb, const endpoints * ep,
 													  int separate_component,	// separate color component for 2-plane mode; -1 for single-plane mode
 													  // bitcounts and errors computed for the various quantization methods
-													  const int *qwt_bitcounts, const float *qwt_errors,
+													  const int *qwt_bitcounts, const float *qwt_errors, int weight_mode_limit,
 													  // output data
 													  int partition_format_specifiers[4*4], int quantized_weight[4], int quantization_level[4], int quantization_level_mod[4]);
 
@@ -800,13 +801,13 @@ void prepare_angular_tables(void);
 
 void compute_angular_endpoints_1plane(const error_weighting_params* ewp,
 									  const block_size_descriptor_sorted * bsds,
-									  const float *decimated_quantized_weights, const float *decimated_weights, float low_value[MAX_WEIGHT_MODES], float high_value[MAX_WEIGHT_MODES]);
+									  const float *decimated_quantized_weights, const float *decimated_weights, float low_value[MAX_SORTED_WEIGHT_MODES], float high_value[MAX_SORTED_WEIGHT_MODES]);
 
 void compute_angular_endpoints_2planes(const error_weighting_params* ewp,
 									   const block_size_descriptor_sorted * bsds,
 									   const float *decimated_quantized_weights,
 									   const float *decimated_weights,
-									   float low_value1[MAX_WEIGHT_MODES], float high_value1[MAX_WEIGHT_MODES], float low_value2[MAX_WEIGHT_MODES], float high_value2[MAX_WEIGHT_MODES]);
+									   float low_value1[MAX_SORTED_WEIGHT_MODES], float high_value1[MAX_SORTED_WEIGHT_MODES], float low_value2[MAX_SORTED_WEIGHT_MODES], float high_value2[MAX_SORTED_WEIGHT_MODES]);
 
 
 

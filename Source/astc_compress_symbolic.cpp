@@ -1121,12 +1121,12 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 	tmpplanes.per_scb.ep = new endpoints[SCB_CANDIDATES * max_blocks];
 	tmpplanes.decimated_quantized_weights = new float[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks];
 	tmpplanes.decimated_weights = new float[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks];
-	tmpplanes.flt_quantized_decimated_quantized_weights = new float[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks];
-	tmpplanes.u8_quantized_decimated_quantized_weights = new uint8_t[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks];
-	tmpplanes.weight_low_value1 = new float[MAX_WEIGHT_MODES * max_blocks];
-	tmpplanes.weight_low_value2 = new float[MAX_WEIGHT_MODES * max_blocks];
-	tmpplanes.weight_high_value1 = new float[MAX_WEIGHT_MODES * max_blocks];
-	tmpplanes.weight_high_value2 = new float[MAX_WEIGHT_MODES * max_blocks];
+	tmpplanes.flt_quantized_decimated_quantized_weights = new float[2 * MAX_SORTED_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks];
+	tmpplanes.u8_quantized_decimated_quantized_weights = new uint8_t[2 * MAX_SORTED_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks];
+	tmpplanes.weight_low_value1 = new float[MAX_SORTED_WEIGHT_MODES * max_blocks];
+	tmpplanes.weight_low_value2 = new float[MAX_SORTED_WEIGHT_MODES * max_blocks];
+	tmpplanes.weight_high_value1 = new float[MAX_SORTED_WEIGHT_MODES * max_blocks];
+	tmpplanes.weight_high_value2 = new float[MAX_SORTED_WEIGHT_MODES * max_blocks];
 	tmpplanes.scb_stat = new uint8_t[max_blocks];
 	tmpplanes.per_scb.partition_format_specifiers = new int[SCB_CANDIDATES * MAX_PARTITIONS * max_blocks];
 	tmpplanes.per_scb.weight_mode = new int[SCB_CANDIDATES * max_blocks];
@@ -1199,8 +1199,8 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 
 		const float *decimated_quantized_weights = &tmpplanes.decimated_quantized_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
 		const float *decimated_weights = &tmpplanes.decimated_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		float *weight_low_value = &tmpplanes.weight_low_value1[MAX_WEIGHT_MODES * blk_idx];
-		float *weight_high_value = &tmpplanes.weight_high_value1[MAX_WEIGHT_MODES * blk_idx];
+		float *weight_low_value = &tmpplanes.weight_low_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		float *weight_high_value = &tmpplanes.weight_high_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
 
 		compute_angular_endpoints_1plane(&ewp, sorted_bsd, decimated_quantized_weights, decimated_weights, weight_low_value, weight_high_value);
 	}
@@ -1221,10 +1221,10 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 		endpoints_and_weights *eix = &tmpplanes.eix1[MAX_DECIMATION_MODES * blk_idx];
 		const float *decimated_quantized_weights = &tmpplanes.decimated_quantized_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
 		const float *decimated_weights = &tmpplanes.decimated_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		float *flt_quantized_decimated_quantized_weights = &tmpplanes.flt_quantized_decimated_quantized_weights[MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		uint8_t *u8_quantized_decimated_quantized_weights = &tmpplanes.u8_quantized_decimated_quantized_weights[MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		const float *weight_low_value = &tmpplanes.weight_low_value1[MAX_WEIGHT_MODES * blk_idx];
-		float *weight_high_value = &tmpplanes.weight_high_value1[MAX_WEIGHT_MODES * blk_idx];
+		float *flt_quantized_decimated_quantized_weights = &tmpplanes.flt_quantized_decimated_quantized_weights[MAX_SORTED_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+		uint8_t *u8_quantized_decimated_quantized_weights = &tmpplanes.u8_quantized_decimated_quantized_weights[MAX_SORTED_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+		const float *weight_low_value = &tmpplanes.weight_low_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		float *weight_high_value = &tmpplanes.weight_high_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
 
 		int partition_index = 0;
 		if (partition_count > 1)
@@ -1257,15 +1257,10 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 		// * generate an optimized set of quantized weights.
 		// * compute quantization errors for the mode.
 
-		int qwt_bitcounts[MAX_WEIGHT_MODES];
-		float qwt_errors[MAX_WEIGHT_MODES];
-		for (int i = 0; i < MAX_WEIGHT_MODES; i++)
+		int qwt_bitcounts[MAX_SORTED_WEIGHT_MODES];
+		float qwt_errors[MAX_SORTED_WEIGHT_MODES];
+		for (int i = 0; i < ewp.weight_mode_limit_1plane; i++)
 		{
-			if (i >= ewp.weight_mode_limit_1plane)
-			{
-				qwt_errors[i] = 1e38f;
-				continue;
-			}
 			if (weight_high_value[i] > 1.02f * min_wt_cutoff)
 				weight_high_value[i] = 1.0f;
 
@@ -1305,7 +1300,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 		int *color_quantization_level = &tmpplanes.per_scb.color_quantization_level[SCB_CANDIDATES * blk_idx];
 		int *color_quantization_level_mod = &tmpplanes.per_scb.color_quantization_level_mod[SCB_CANDIDATES * blk_idx];
 		determine_optimal_set_of_endpoint_formats_to_use(xdim, ydim, zdim, pi, blk, ewb, &(ei->ep), -1,	// used to flag that we are in single-weight mode
-			qwt_bitcounts, qwt_errors, partition_format_specifiers, weight_mode, color_quantization_level, color_quantization_level_mod);
+			qwt_bitcounts, qwt_errors, ewp.weight_mode_limit_1plane, partition_format_specifiers, weight_mode, color_quantization_level, color_quantization_level_mod);
 
 		for (int i = 0; i < 4; i++)
 		{
@@ -1339,7 +1334,6 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 			const imageblock * blk = &blk_batch[blk_idx];
 			const error_weight_block *ewb = &ewb_batch[blk_idx];
 			symbolic_compressed_block *scb = &scb_candidates[SCB_CANDIDATES * blk_idx];
-			uint8_t *u8_quantized_decimated_quantized_weights = &tmpplanes.u8_quantized_decimated_quantized_weights[MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
 
 			int partition_index = 0;
 			if (partition_count > 1)
@@ -1537,10 +1531,10 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 
 		const float *decimated_quantized_weights = &tmpplanes.decimated_quantized_weights[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
 		const float *decimated_weights = &tmpplanes.decimated_weights[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		float *weight_low_value1 = &tmpplanes.weight_low_value1[MAX_WEIGHT_MODES * blk_idx];
-		float *weight_low_value2 = &tmpplanes.weight_low_value2[MAX_WEIGHT_MODES * blk_idx];
-		float *weight_high_value1 = &tmpplanes.weight_high_value1[MAX_WEIGHT_MODES * blk_idx];
-		float *weight_high_value2 = &tmpplanes.weight_high_value2[MAX_WEIGHT_MODES * blk_idx];
+		float *weight_low_value1 = &tmpplanes.weight_low_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		float *weight_low_value2 = &tmpplanes.weight_low_value2[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		float *weight_high_value1 = &tmpplanes.weight_high_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		float *weight_high_value2 = &tmpplanes.weight_high_value2[MAX_SORTED_WEIGHT_MODES * blk_idx];
 
 		compute_angular_endpoints_2planes(&ewp, sorted_bsd, decimated_quantized_weights, decimated_weights, weight_low_value1, weight_high_value1, weight_low_value2, weight_high_value2);
 	}
@@ -1564,12 +1558,12 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 		endpoints_and_weights *eix2 = &tmpplanes.eix2[MAX_DECIMATION_MODES * blk_idx];
 		const float *decimated_quantized_weights = &tmpplanes.decimated_quantized_weights[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
 		const float *decimated_weights = &tmpplanes.decimated_weights[2 * MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		float *flt_quantized_decimated_quantized_weights = &tmpplanes.flt_quantized_decimated_quantized_weights[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		uint8_t *u8_quantized_decimated_quantized_weights = &tmpplanes.u8_quantized_decimated_quantized_weights[2 * MAX_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		const float *weight_low_value1 = &tmpplanes.weight_low_value1[MAX_WEIGHT_MODES * blk_idx];
-		const float *weight_low_value2 = &tmpplanes.weight_low_value2[MAX_WEIGHT_MODES * blk_idx];
-		float *weight_high_value1 = &tmpplanes.weight_high_value1[MAX_WEIGHT_MODES * blk_idx];
-		float *weight_high_value2 = &tmpplanes.weight_high_value2[MAX_WEIGHT_MODES * blk_idx];
+		float *flt_quantized_decimated_quantized_weights = &tmpplanes.flt_quantized_decimated_quantized_weights[2 * MAX_SORTED_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+		uint8_t *u8_quantized_decimated_quantized_weights = &tmpplanes.u8_quantized_decimated_quantized_weights[2 * MAX_SORTED_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+		const float *weight_low_value1 = &tmpplanes.weight_low_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		const float *weight_low_value2 = &tmpplanes.weight_low_value2[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		float *weight_high_value1 = &tmpplanes.weight_high_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		float *weight_high_value2 = &tmpplanes.weight_high_value2[MAX_SORTED_WEIGHT_MODES * blk_idx];
 
 		int partition_index = 0;
 		if (partition_count > 1)
@@ -1637,15 +1631,10 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 		// * generate an optimized set of quantized weights.
 		// * compute quantization errors for each mode
 
-		int qwt_bitcounts[MAX_WEIGHT_MODES];
-		float qwt_errors[MAX_WEIGHT_MODES];
-		for (int i = 0; i < MAX_WEIGHT_MODES; i++)
+		int qwt_bitcounts[MAX_SORTED_WEIGHT_MODES];
+		float qwt_errors[MAX_SORTED_WEIGHT_MODES];
+		for (int i = 0; i < ewp.weight_mode_limit_2planes; i++)
 		{
-			if (i >= ewp.weight_mode_limit_2planes)
-			{
-				qwt_errors[i] = 1e38f;
-				continue;
-			}
 			int decimation_mode = sorted_bsd->block_modes[i].sorted_decimation_mode;
 
 			if (weight_high_value1[i] > 1.02f * min_wt_cutoff1)
@@ -1704,7 +1693,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 			pi,
 			blk,
 			ewb,
-			&epm, separate_component, qwt_bitcounts, qwt_errors, partition_format_specifiers, weight_mode, color_quantization_level, color_quantization_level_mod);
+			&epm, separate_component, qwt_bitcounts, qwt_errors, ewp.weight_mode_limit_2planes, partition_format_specifiers, weight_mode, color_quantization_level, color_quantization_level_mod);
 
 		for (int i = 0; i < 4; i++)
 		{
