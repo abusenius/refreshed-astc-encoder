@@ -560,12 +560,12 @@ void compute_angular_endpoints_2planes(const error_weighting_params* ewp,
 		int quant_mode = bsds->decimation_mode_maxprec[i];
 
 		compute_angular_endpoints_for_quantization_levels(samplecount,
-														  decimated_quantized_weights + 2 * i * MAX_WEIGHTS_PER_BLOCK,
-														  decimated_weights + 2 * i * MAX_WEIGHTS_PER_BLOCK, quant_mode, low_values1[i], high_values1[i]);
+														  decimated_quantized_weights + 2 * i * (MAX_WEIGHTS_PER_BLOCK / 2),
+														  decimated_weights + 2 * i * (MAX_WEIGHTS_PER_BLOCK / 2), quant_mode, low_values1[i], high_values1[i]);
 
 		compute_angular_endpoints_for_quantization_levels(samplecount,
-														  decimated_quantized_weights + (2 * i + 1) * MAX_WEIGHTS_PER_BLOCK,
-														  decimated_weights + (2 * i + 1) * MAX_WEIGHTS_PER_BLOCK, quant_mode, low_values2[i], high_values2[i]);
+														  decimated_quantized_weights + (2 * i + 1) * (MAX_WEIGHTS_PER_BLOCK / 2),
+														  decimated_weights + (2 * i + 1) * (MAX_WEIGHTS_PER_BLOCK / 2), quant_mode, low_values2[i], high_values2[i]);
 
 	}
 
