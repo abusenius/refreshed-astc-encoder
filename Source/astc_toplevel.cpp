@@ -2680,7 +2680,6 @@ int main(int argc, char **argv)
 
 
 	end_coding_time = get_time();
-	destroy_opencl();
 
 	// print PSNR if encoding
 	if (opmode == 2)
@@ -2730,6 +2729,7 @@ int main(int argc, char **argv)
 
 
 	end_time = get_time();
+	destroy_opencl();
 
 	if (timemode)
 	{
