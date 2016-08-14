@@ -2630,43 +2630,47 @@ int main(int argc, char **argv)
 		}
 	}
 
-	const block_size_descriptor * bsd = get_block_size_descriptor(xdim, ydim, zdim);
-	const block_size_descriptor_sorted * sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 0);
-	
-	for (i = 0; i < MAX_DECIMATION_MODES; i++)
-		if (sorted_bsd->decimation_mode_maxprec[i] < 0 || sorted_bsd->decimation_mode_percentile[i] > ewp.block_mode_cutoff)
-			break;
-	ewp.decimation_mode_limit_1plane = i;
-
-	for ( i = 0; i < MAX_SORTED_WEIGHT_MODES; i++)
+	if (opmode == 0 || opmode == 2)
 	{
-		int block_mode = sorted_bsd->block_modes[i].block_mode;
-		if (block_mode < 0)
-			break;
-		if (bsd->block_modes[block_mode].percentile > ewp.block_mode_cutoff)
-			break;
+		const block_size_descriptor * bsd = get_block_size_descriptor(xdim, ydim, zdim);
+		const block_size_descriptor_sorted * sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 0);
+
+		for (i = 0; i < MAX_DECIMATION_MODES; i++)
+			if (sorted_bsd->decimation_mode_maxprec[i] < 0 || sorted_bsd->decimation_mode_percentile[i] > ewp.block_mode_cutoff)
+				break;
+		ewp.decimation_mode_limit_1plane = i;
+
+		for (i = 0; i < MAX_SORTED_WEIGHT_MODES; i++)
+		{
+			int block_mode = sorted_bsd->block_modes[i].block_mode;
+			if (block_mode < 0)
+				break;
+			if (bsd->block_modes[block_mode].percentile > ewp.block_mode_cutoff)
+				break;
+		}
+		ewp.weight_mode_limit_1plane = i;
+
+
+		sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 1);
+
+		for (i = 0; i < MAX_DECIMATION_MODES; i++)
+			if (sorted_bsd->decimation_mode_maxprec[i] < 0 || sorted_bsd->decimation_mode_percentile[i] > ewp.block_mode_cutoff)
+				break;
+		ewp.decimation_mode_limit_2planes = i;
+
+		for (i = 0; i < MAX_SORTED_WEIGHT_MODES; i++)
+		{
+			int block_mode = sorted_bsd->block_modes[i].block_mode;
+			if (block_mode < 0)
+				break;
+			if (bsd->block_modes[block_mode].percentile > ewp.block_mode_cutoff)
+				break;
+		}
+		ewp.weight_mode_limit_2planes = i;
+
+		init_opencl(opencl_plat_id, opencl_dev_id, silentmode, batch_size, xdim, ydim, zdim, &ewp, decode_mode);
 	}
-	ewp.weight_mode_limit_1plane = i;
 
-	
-	sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 1);
-	
-	for (i = 0; i < MAX_DECIMATION_MODES; i++)
-		if (sorted_bsd->decimation_mode_maxprec[i] < 0 || sorted_bsd->decimation_mode_percentile[i] > ewp.block_mode_cutoff)
-			break;
-	ewp.decimation_mode_limit_2planes = i;
-
-	for (i = 0; i < MAX_SORTED_WEIGHT_MODES; i++)
-	{
-		int block_mode = sorted_bsd->block_modes[i].block_mode;
-		if (block_mode < 0)
-			break;
-		if (bsd->block_modes[block_mode].percentile > ewp.block_mode_cutoff)
-			break;
-	}
-	ewp.weight_mode_limit_2planes = i;
-
-	init_opencl(opencl_plat_id, opencl_dev_id, silentmode, batch_size, xdim, ydim, zdim, &ewp, decode_mode);
 	start_coding_time = get_time();
 
 
@@ -2727,9 +2731,10 @@ int main(int argc, char **argv)
 		printf("\n");
 	}
 
+	if (opmode == 0 || opmode == 2)
+		destroy_opencl();
 
 	end_time = get_time();
-	destroy_opencl();
 
 	if (timemode)
 	{
