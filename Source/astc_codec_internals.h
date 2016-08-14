@@ -392,8 +392,16 @@ typedef struct
 	uint8_t closest_quantized_weight[1025];
 } quantization_and_transfer_table;
 
+typedef struct
+{
+	quantization_method method;
+	uint8_t monotonic_to_scramble[32];
+	uint8_t scramble_to_monotonic[32];
+} quantization_scramble_mapping;
+
 #ifndef OPENCL_C_KERNEL
 extern const quantization_and_transfer_table quant_and_xfer_tables[12];
+extern const quantization_scramble_mapping quant_scramble_maps[12];
 #endif // !OPENCL_C_KERNEL
 
 

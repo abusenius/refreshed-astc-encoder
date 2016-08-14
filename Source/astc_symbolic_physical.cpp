@@ -125,20 +125,22 @@ physical_compressed_block symbolic_to_physical(int xdim, int ydim, int zdim, con
 												(quantization_method) weight_quantization_method);
 
 
+	uint8_t weights[64];
+	const uint8_t *scramble_map = quant_scramble_maps[weight_quantization_method].monotonic_to_scramble;
 	if (is_dual_plane)
 	{
-		uint8_t weights[64];
 		for (i = 0; i < weight_count; i++)
 		{
-			weights[2 * i] = sc->plane1_weights[i];
-			weights[2 * i + 1] = sc->plane2_weights[i];
+			weights[2 * i] = scramble_map[sc->plane1_weights[i]];
+			weights[2 * i + 1] = scramble_map[sc->plane2_weights[i]];
 		}
-		encode_ise(weight_quantization_method, real_weight_count, weights, weightbuf, 0);
 	}
 	else
 	{
-		encode_ise(weight_quantization_method, weight_count, sc->plane1_weights, weightbuf, 0);
+		for (i = 0; i < weight_count; i++)
+			weights[i] = scramble_map[sc->plane1_weights[i]];
 	}
+	encode_ise(weight_quantization_method, real_weight_count, weights, weightbuf, 0);
 
 	for (i = 0; i < 16; i++)
 		res.data[i] = bitrev8(weightbuf[15 - i]);
@@ -316,19 +318,21 @@ void physical_to_symbolic(int xdim, int ydim, int zdim, physical_compressed_bloc
 
 	int below_weights_pos = 128 - bits_for_weights;
 
+	const uint8_t *scramble_map = quant_scramble_maps[weight_quantization_method].scramble_to_monotonic;
+	uint8_t indices[64];
+	decode_ise(weight_quantization_method, real_weight_count, bswapped, indices, 0);
 	if (is_dual_plane)
 	{
-		uint8_t indices[64];
-		decode_ise(weight_quantization_method, real_weight_count, bswapped, indices, 0);
 		for (i = 0; i < weight_count; i++)
 		{
-			res->plane1_weights[i] = indices[2 * i];
-			res->plane2_weights[i] = indices[2 * i + 1];
+			res->plane1_weights[i] = scramble_map[indices[2 * i]];
+			res->plane2_weights[i] = scramble_map[indices[2 * i + 1]];
 		}
 	}
 	else
 	{
-		decode_ise(weight_quantization_method, weight_count, bswapped, res->plane1_weights, 0);
+		for (i = 0; i < weight_count; i++)
+			res->plane1_weights[i] = scramble_map[indices[i]];
 	}
 
 	if (is_dual_plane && partition_count == 4)
