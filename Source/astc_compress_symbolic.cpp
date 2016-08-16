@@ -66,25 +66,8 @@ int realign_weights(astc_decode_mode decode_mode,
 							   scb->color_formats[i], scb->color_quantization_level, scb->color_values[i], &rgb_hdr[i], &alpha_hdr[i], &nan_endpoint[i], &(color_endpoint0[i]), &(color_endpoint1[i]));
 
 
-	float uq_plane1_weights[MAX_WEIGHTS_PER_BLOCK];
-	float uq_plane2_weights[MAX_WEIGHTS_PER_BLOCK];
 	int weight_count = it->num_weights;
-
-	// read the weights.
-
 	const quantization_and_transfer_table *qat = &(quant_and_xfer_tables[weight_quantization_level]);
-
-	for (i = 0; i < weight_count; i++)
-	{
-		uq_plane1_weights[i] = ((float)weight_set8[i]) / 64;
-	}
-	if (is_dual_plane)
-	{
-		for (i = 0; i < weight_count; i++)
-			uq_plane2_weights[i] = ((float)plane2_weight_set8[i]) / 64;
-	}
-
-
 	int plane2_color_component = is_dual_plane ? scb->plane2_color_component : -1;
 
 	// for each weight, unquantize the weight, use it to compute a color and a color error.
@@ -97,12 +80,10 @@ int realign_weights(astc_decode_mode decode_mode,
 			{ \
 			int texel = it->weight_texel[i][j]; \
 			int partition = pt->partition_of_texel[texel]; \
-			float plane1_weight = compute_value_of_texel_flt( texel, it, uq_plane1_weights ); \
-			float plane2_weight = 0.0f; \
+			int int_plane1_weight = compute_value_of_texel_int( texel, it, weight_set8 ); \
+			int int_plane2_weight = 0; \
 			if( is_dual_plane ) \
-				plane2_weight = compute_value_of_texel_flt( texel, it, uq_plane2_weights ); \
-			int int_plane1_weight = static_cast<int>(floor( plane1_weight*64.0f + 0.5f ) ); \
-			int int_plane2_weight = static_cast<int>(floor( plane2_weight*64.0f + 0.5f ) ); \
+				int_plane2_weight = compute_value_of_texel_int( texel, it, plane2_weight_set8 ); \
 			ushort4 lrp_color = lerp_color_int( \
 				decode_mode, \
 				color_endpoint0[partition], \
@@ -139,7 +120,7 @@ int realign_weights(astc_decode_mode decode_mode,
 			if (64 == current_wt)
 				break;
 			int next_wt = qat->next_unquantized_value[current_wt];
-			uq_plane1_weights[i] = ((float)next_wt) / 64;
+			weight_set8[i] = next_wt;
 			float next_error;
 			COMPUTE_ERROR(next_error);
 			if (next_error < current_error)
@@ -152,7 +133,7 @@ int realign_weights(astc_decode_mode decode_mode,
 			else
 			{
 				// failed, back out the attempted increment
-				uq_plane1_weights[i] = ((float)current_wt) / 64;
+				weight_set8[i] = current_wt;
 				break;
 			}
 		}
@@ -162,7 +143,7 @@ int realign_weights(astc_decode_mode decode_mode,
 			if (0 == current_wt)
 				break;
 			int prev_wt = qat->prev_unquantized_value[current_wt];
-			uq_plane1_weights[i] = ((float)prev_wt) / 64;
+			weight_set8[i] = prev_wt;
 			float prev_error;
 			COMPUTE_ERROR(prev_error);
 			if (prev_error < current_error)
@@ -175,12 +156,10 @@ int realign_weights(astc_decode_mode decode_mode,
 			else
 			{
 				// failed, back out the attempted decrement
-				uq_plane1_weights[i] = ((float)current_wt) / 64;
+				weight_set8[i] = current_wt;
 				break;
 			}
 		}
-
-		weight_set8[i] = current_wt;
 	}
 
 	if (!is_dual_plane)
@@ -202,7 +181,7 @@ int realign_weights(astc_decode_mode decode_mode,
 			if (64 == current_wt)
 				break;
 			int next_wt = qat->next_unquantized_value[current_wt];
-			uq_plane2_weights[i] = ((float)next_wt) / 64;
+			plane2_weight_set8[i] = next_wt;
 			float next_error;
 			COMPUTE_ERROR(next_error);
 			if (next_error < current_error)
@@ -215,7 +194,7 @@ int realign_weights(astc_decode_mode decode_mode,
 			else
 			{
 				// failed, back out the attempted increment
-				uq_plane2_weights[i] = ((float)current_wt) / 64;
+				plane2_weight_set8[i] = current_wt;
 				break;
 			}
 		}
@@ -225,7 +204,7 @@ int realign_weights(astc_decode_mode decode_mode,
 			if (0 == current_wt)
 				break;
 			int prev_wt = qat->prev_unquantized_value[current_wt];
-			uq_plane2_weights[i] = ((float)prev_wt) / 64;
+			plane2_weight_set8[i] = prev_wt;
 			float prev_error;
 			COMPUTE_ERROR(prev_error);
 			if (prev_error < current_error)
@@ -238,12 +217,10 @@ int realign_weights(astc_decode_mode decode_mode,
 			else
 			{
 				// failed, back out the attempted decrement
-				uq_plane2_weights[i] = ((float)current_wt) / 64;
+				plane2_weight_set8[i] = current_wt;
 				break;
 			}
 		}
-
-		plane2_weight_set8[i] = current_wt;
 	}
 
 	return adjustments;
