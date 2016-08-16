@@ -377,31 +377,29 @@ typedef enum
 	In ASTC, we support relatively many combinations of weight precisions and weight transfer functions.
 	As such, for each combination we support, we have a hardwired data structure.
 
-	This structure provides the following information: A table, used to estimate the closest quantized
-	weight for a given floating-point weight. For each quantized weight, the corresponding unquantized
-	and floating-point values. For each quantized weight, a previous-value and a next-value.
+	This structure provides the following information: A table, used to estimate the closest unquantized
+	weight for a given floating-point weight. For each unquantized weight, a previous-value and a next-value.
+
+	Another structure provides mapping between quantized and unquantized weights.
 */
 
 typedef struct
 {
-	quantization_method method;
-	uint8_t unquantized_value[32];	// 0..64
-	float unquantized_value_flt[32];	// 0..1
-	uint8_t prev_quantized_value[32];
-	uint8_t next_quantized_value[32];
-	uint8_t closest_quantized_weight[1025];
+	uint8_t prev_unquantized_value[65];
+	uint8_t next_unquantized_value[65];
+	uint8_t closest_unquantized_weight[1025];
 } quantization_and_transfer_table;
 
+#ifndef OPENCL_C_KERNEL
 typedef struct
 {
 	quantization_method method;
-	uint8_t monotonic_to_scramble[32];
-	uint8_t scramble_to_monotonic[32];
-} quantization_scramble_mapping;
+	uint8_t unquantized_value[32];  // 0..64
+	uint8_t quantized_value[65];  // 0..QUANT_RANGE
+} quantization_unqantization_table;
 
-#ifndef OPENCL_C_KERNEL
 extern const quantization_and_transfer_table quant_and_xfer_tables[12];
-extern const quantization_scramble_mapping quant_scramble_maps[12];
+extern const quantization_unqantization_table quant_unquant_tables[12];
 #endif // !OPENCL_C_KERNEL
 
 

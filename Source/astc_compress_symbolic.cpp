@@ -70,18 +70,18 @@ int realign_weights(astc_decode_mode decode_mode,
 	float uq_plane2_weights[MAX_WEIGHTS_PER_BLOCK];
 	int weight_count = it->num_weights;
 
-	// read and unquantize the weights.
+	// read the weights.
 
 	const quantization_and_transfer_table *qat = &(quant_and_xfer_tables[weight_quantization_level]);
 
 	for (i = 0; i < weight_count; i++)
 	{
-		uq_plane1_weights[i] = qat->unquantized_value_flt[weight_set8[i]];
+		uq_plane1_weights[i] = ((float)weight_set8[i]) / 64;
 	}
 	if (is_dual_plane)
 	{
 		for (i = 0; i < weight_count; i++)
-			uq_plane2_weights[i] = qat->unquantized_value_flt[plane2_weight_set8[i]];
+			uq_plane2_weights[i] = ((float)plane2_weight_set8[i]) / 64;
 	}
 
 
@@ -136,10 +136,10 @@ int realign_weights(astc_decode_mode decode_mode,
 		// increment until error starts increasing.
 		while (1)
 		{
-			int next_wt = qat->next_quantized_value[current_wt];
-			if (next_wt == current_wt)
+			if (64 == current_wt)
 				break;
-			uq_plane1_weights[i] = qat->unquantized_value_flt[next_wt];
+			int next_wt = qat->next_unquantized_value[current_wt];
+			uq_plane1_weights[i] = ((float)next_wt) / 64;
 			float next_error;
 			COMPUTE_ERROR(next_error);
 			if (next_error < current_error)
@@ -152,17 +152,17 @@ int realign_weights(astc_decode_mode decode_mode,
 			else
 			{
 				// failed, back out the attempted increment
-				uq_plane1_weights[i] = qat->unquantized_value_flt[current_wt];
+				uq_plane1_weights[i] = ((float)current_wt) / 64;
 				break;
 			}
 		}
 		// decrement until error starts increasing
 		while (1)
 		{
-			int prev_wt = qat->prev_quantized_value[current_wt];
-			if (prev_wt == current_wt)
+			if (0 == current_wt)
 				break;
-			uq_plane1_weights[i] = qat->unquantized_value_flt[prev_wt];
+			int prev_wt = qat->prev_unquantized_value[current_wt];
+			uq_plane1_weights[i] = ((float)prev_wt) / 64;
 			float prev_error;
 			COMPUTE_ERROR(prev_error);
 			if (prev_error < current_error)
@@ -175,7 +175,7 @@ int realign_weights(astc_decode_mode decode_mode,
 			else
 			{
 				// failed, back out the attempted decrement
-				uq_plane1_weights[i] = qat->unquantized_value_flt[current_wt];
+				uq_plane1_weights[i] = ((float)current_wt) / 64;
 				break;
 			}
 		}
@@ -199,10 +199,10 @@ int realign_weights(astc_decode_mode decode_mode,
 		// increment until error starts increasing.
 		while (1)
 		{
-			int next_wt = qat->next_quantized_value[current_wt];
-			if (next_wt == current_wt)
+			if (64 == current_wt)
 				break;
-			uq_plane2_weights[i] = qat->unquantized_value_flt[next_wt];
+			int next_wt = qat->next_unquantized_value[current_wt];
+			uq_plane2_weights[i] = ((float)next_wt) / 64;
 			float next_error;
 			COMPUTE_ERROR(next_error);
 			if (next_error < current_error)
@@ -215,17 +215,17 @@ int realign_weights(astc_decode_mode decode_mode,
 			else
 			{
 				// failed, back out the attempted increment
-				uq_plane2_weights[i] = qat->unquantized_value_flt[current_wt];
+				uq_plane2_weights[i] = ((float)current_wt) / 64;
 				break;
 			}
 		}
 		// decrement until error starts increasing
 		while (1)
 		{
-			int prev_wt = qat->prev_quantized_value[current_wt];
-			if (prev_wt == current_wt)
+			if (0 == current_wt)
 				break;
-			uq_plane1_weights[i] = qat->unquantized_value_flt[prev_wt];
+			int prev_wt = qat->prev_unquantized_value[current_wt];
+			uq_plane1_weights[i] = ((float)prev_wt) / 64;
 			float prev_error;
 			COMPUTE_ERROR(prev_error);
 			if (prev_error < current_error)
@@ -238,7 +238,7 @@ int realign_weights(astc_decode_mode decode_mode,
 			else
 			{
 				// failed, back out the attempted decrement
-				uq_plane2_weights[i] = qat->unquantized_value_flt[current_wt];
+				uq_plane2_weights[i] = ((float)current_wt) / 64;
 				break;
 			}
 		}

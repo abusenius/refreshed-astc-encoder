@@ -1344,9 +1344,9 @@ void compute_ideal_quantized_weights_for_decimation_table(const endpoints_and_we
 
 		ix *= 1024.0f;
 		int ix2 = (int)floor(ix + 0.5f);
-		int weight = qat->closest_quantized_weight[ix2];
+		int weight = qat->closest_unquantized_weight[ix2];
 
-		ix = qat->unquantized_value_flt[weight];
+		ix = ((float)weight) / 64;
 		weight_set_out[i] = ix;
 		quantized_weight_set[i] = weight;
 
@@ -1434,11 +1434,11 @@ void compute_ideal_quantized_weights_for_decimation_table(const endpoints_and_we
 			{
 
 				int weight_val = quantized_weight_set[weight_to_perturb];
-				int weight_next_up = qat->next_quantized_value[weight_val];
-				int weight_next_down = qat->prev_quantized_value[weight_val];
-				float flt_weight_val = qat->unquantized_value_flt[weight_val];
-				float flt_weight_next_up = qat->unquantized_value_flt[weight_next_up];
-				float flt_weight_next_down = qat->unquantized_value_flt[weight_next_down];
+				int weight_next_up = qat->next_unquantized_value[weight_val];
+				int weight_next_down = qat->prev_unquantized_value[weight_val];
+				float flt_weight_val = ((float)weight_val) / 64;
+				float flt_weight_next_up = ((float)weight_next_up) / 64;
+				float flt_weight_next_down = ((float)weight_next_down) / 64;
 
 
 				int do_quant_mod = 0;
@@ -1572,19 +1572,17 @@ void recompute_ideal_colors(int xdim, int ydim, int zdim, int weight_quantizatio
 
 	int texels_per_block = xdim * ydim * zdim;
 
-	const quantization_and_transfer_table *qat = &(quant_and_xfer_tables[weight_quantization_mode]);
-
 	float weight_set[MAX_WEIGHTS_PER_BLOCK];
 	float plane2_weight_set[MAX_WEIGHTS_PER_BLOCK];
 
 	for (i = 0; i < it->num_weights; i++)
 	{
-		weight_set[i] = qat->unquantized_value_flt[weight_set8[i]];
+		weight_set[i] = ((float)weight_set8[i]) / 64;
 	}
 	if (plane2_weight_set8)
 	{
 		for (i = 0; i < it->num_weights; i++)
-			plane2_weight_set[i] = qat->unquantized_value_flt[plane2_weight_set8[i]];
+			plane2_weight_set[i] = ((float)plane2_weight_set8[i]) / 64;
 	}
 
 	int partition_count = pi->partition_count;

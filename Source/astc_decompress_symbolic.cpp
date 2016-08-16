@@ -20,14 +20,14 @@
 #include <math.h>
 #include <stdio.h>
 
-int compute_value_of_texel_int(int texel_to_get, const decimation_table * it, const int *weights)
+int compute_value_of_texel_int(int texel_to_get, const decimation_table * it, const uint8_t *weights)
 {
 	int i;
 	int summed_value = 8;
 	int weights_to_evaluate = it->texel_num_weights[texel_to_get];
 	for (i = 0; i < weights_to_evaluate; i++)
 	{
-		summed_value += weights[it->texel_weights[texel_to_get][i]] * it->texel_weights_int[texel_to_get][i];
+		summed_value += ((int)weights[it->texel_weights[texel_to_get][i]]) * it->texel_weights_int[texel_to_get][i];
 	}
 	return summed_value >> 4;
 }
@@ -225,37 +225,17 @@ void decompress_symbolic_block(astc_decode_mode decode_mode,
 
 
 
-	// first unquantize the weights
-	int uq_plane1_weights[MAX_WEIGHTS_PER_BLOCK];
-	int uq_plane2_weights[MAX_WEIGHTS_PER_BLOCK];
-	int weight_count = it->num_weights;
-
-
-	const quantization_and_transfer_table *qat = &(quant_and_xfer_tables[weight_quantization_level]);
-
-	for (i = 0; i < weight_count; i++)
-	{
-		uq_plane1_weights[i] = qat->unquantized_value[scb->plane1_weights[i]];
-	}
-	if (is_dual_plane)
-	{
-		for (i = 0; i < weight_count; i++)
-			uq_plane2_weights[i] = qat->unquantized_value[scb->plane2_weights[i]];
-	}
-
-
-	// then un-decimate them.
+	// un-decimate the weights
 	int weights[MAX_TEXELS_PER_BLOCK];
 	int plane2_weights[MAX_TEXELS_PER_BLOCK];
 
-
 	int texels_per_block = xdim * ydim * zdim;
 	for (i = 0; i < texels_per_block; i++)
-		weights[i] = compute_value_of_texel_int(i, it, uq_plane1_weights);
+		weights[i] = compute_value_of_texel_int(i, it, scb->plane1_weights);
 
 	if (is_dual_plane)
 		for (i = 0; i < texels_per_block; i++)
-			plane2_weights[i] = compute_value_of_texel_int(i, it, uq_plane2_weights);
+			plane2_weights[i] = compute_value_of_texel_int(i, it, scb->plane2_weights);
 
 
 	int plane2_color_component = scb->plane2_color_component;

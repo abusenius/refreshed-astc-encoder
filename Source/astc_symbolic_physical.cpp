@@ -126,19 +126,19 @@ physical_compressed_block symbolic_to_physical(int xdim, int ydim, int zdim, con
 
 
 	uint8_t weights[64];
-	const uint8_t *scramble_map = quant_scramble_maps[weight_quantization_method].monotonic_to_scramble;
+	const uint8_t *quantized_value = quant_unquant_tables[weight_quantization_method].quantized_value;
 	if (is_dual_plane)
 	{
 		for (i = 0; i < weight_count; i++)
 		{
-			weights[2 * i] = scramble_map[sc->plane1_weights[i]];
-			weights[2 * i + 1] = scramble_map[sc->plane2_weights[i]];
+			weights[2 * i] = quantized_value[sc->plane1_weights[i]];
+			weights[2 * i + 1] = quantized_value[sc->plane2_weights[i]];
 		}
 	}
 	else
 	{
 		for (i = 0; i < weight_count; i++)
-			weights[i] = scramble_map[sc->plane1_weights[i]];
+			weights[i] = quantized_value[sc->plane1_weights[i]];
 	}
 	encode_ise(weight_quantization_method, real_weight_count, weights, weightbuf, 0);
 
@@ -318,21 +318,21 @@ void physical_to_symbolic(int xdim, int ydim, int zdim, physical_compressed_bloc
 
 	int below_weights_pos = 128 - bits_for_weights;
 
-	const uint8_t *scramble_map = quant_scramble_maps[weight_quantization_method].scramble_to_monotonic;
+	const uint8_t *unquantized_value = quant_unquant_tables[weight_quantization_method].unquantized_value;
 	uint8_t indices[64];
 	decode_ise(weight_quantization_method, real_weight_count, bswapped, indices, 0);
 	if (is_dual_plane)
 	{
 		for (i = 0; i < weight_count; i++)
 		{
-			res->plane1_weights[i] = scramble_map[indices[2 * i]];
-			res->plane2_weights[i] = scramble_map[indices[2 * i + 1]];
+			res->plane1_weights[i] = unquantized_value[indices[2 * i]];
+			res->plane2_weights[i] = unquantized_value[indices[2 * i + 1]];
 		}
 	}
 	else
 	{
 		for (i = 0; i < weight_count; i++)
-			res->plane1_weights[i] = scramble_map[indices[i]];
+			res->plane1_weights[i] = unquantized_value[indices[i]];
 	}
 
 	if (is_dual_plane && partition_count == 4)
