@@ -1724,7 +1724,7 @@ void recompute_ideal_colors(int xdim, int ydim, int zdim, int weight_quantizatio
 		float a = pb->work_data[4 * i + 3];
 
 		int part = pi->partition_of_texel[i];
-		float idx0 = it ? compute_value_of_texel_flt(i, it, weight_set) : weight_set[i];
+		float idx0 = compute_value_of_texel_flt(i, it, weight_set);
 		float om_idx0 = 1.0f - idx0;
 
 		if (idx0 > wmax1[part])
@@ -1794,7 +1794,7 @@ void recompute_ideal_colors(int xdim, int ydim, int zdim, int weight_quantizatio
 		float idx1 = 0.0f, om_idx1 = 0.0f;
 		if (plane2_weight_set8)
 		{
-			idx1 = it ? compute_value_of_texel_flt(i, it, plane2_weight_set) : plane2_weight_set[i];
+			idx1 = compute_value_of_texel_flt(i, it, plane2_weight_set);
 			om_idx1 = 1.0f - idx1;
 			if (idx1 > wmax2[part])
 				wmax2[part] = idx1;

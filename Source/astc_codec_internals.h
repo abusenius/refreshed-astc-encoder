@@ -436,7 +436,7 @@ typedef struct
 	int color_formats_matched;	// color format for all endpoint pairs are matched.
 	int color_values[4][12];	// quantized endpoint color pairs.
 	int color_quantization_level;
-	uint8_t plane1_weights[MAX_WEIGHTS_PER_BLOCK];	// quantized and decimated weights
+	uint8_t plane1_weights[MAX_WEIGHTS_PER_BLOCK];	// unquantized value of quantized and decimated weights (0.. 64)
 	uint8_t plane2_weights[MAX_WEIGHTS_PER_BLOCK];
 	int plane2_color_component;	// color component for the secondary plane of weights
 	int constant_color[4];		// constant-color, as FP16 or UINT16. Used for constant-color blocks only.
@@ -734,7 +734,7 @@ float compute_error_of_weight_set(const endpoints_and_weights * eai, const decim
 float compute_value_of_texel_flt(int texel_to_get, const decimation_table * it, const float *weights);
 
 
-int compute_value_of_texel_int(int texel_to_get, const decimation_table * it, const int *weights);
+int compute_value_of_texel_int(int texel_to_get, const decimation_table * it, const uint8_t *weights);
 
 
 void merge_endpoints(const endpoints * ep1,	// contains three of the color components
