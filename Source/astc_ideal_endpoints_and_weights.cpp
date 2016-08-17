@@ -1571,20 +1571,6 @@ void recompute_ideal_colors(int xdim, int ydim, int zdim, int weight_quantizatio
 	int i, j;
 
 	int texels_per_block = xdim * ydim * zdim;
-
-	float weight_set[MAX_WEIGHTS_PER_BLOCK];
-	float plane2_weight_set[MAX_WEIGHTS_PER_BLOCK];
-
-	for (i = 0; i < it->num_weights; i++)
-	{
-		weight_set[i] = ((float)weight_set8[i]) / 64;
-	}
-	if (plane2_weight_set8)
-	{
-		for (i = 0; i < it->num_weights; i++)
-			plane2_weight_set[i] = ((float)plane2_weight_set8[i]) / 64;
-	}
-
 	int partition_count = pi->partition_count;
 
 	#ifdef DEBUG_PRINT_DIAGNOSTICS
@@ -1724,7 +1710,7 @@ void recompute_ideal_colors(int xdim, int ydim, int zdim, int weight_quantizatio
 		float a = pb->work_data[4 * i + 3];
 
 		int part = pi->partition_of_texel[i];
-		float idx0 = compute_value_of_texel_flt(i, it, weight_set);
+		float idx0 = ((float)compute_value_of_texel_int(i, it, weight_set8)) / 64;
 		float om_idx0 = 1.0f - idx0;
 
 		if (idx0 > wmax1[part])
@@ -1794,7 +1780,7 @@ void recompute_ideal_colors(int xdim, int ydim, int zdim, int weight_quantizatio
 		float idx1 = 0.0f, om_idx1 = 0.0f;
 		if (plane2_weight_set8)
 		{
-			idx1 = compute_value_of_texel_flt(i, it, plane2_weight_set);
+			idx1 = ((float)compute_value_of_texel_int(i, it, plane2_weight_set8)) / 64;
 			om_idx1 = 1.0f - idx1;
 			if (idx1 > wmax2[part])
 				wmax2[part] = idx1;
