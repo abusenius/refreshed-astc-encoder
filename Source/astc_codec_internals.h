@@ -333,7 +333,7 @@ typedef struct
 	float texel_weight_rg[MAX_TEXELS_PER_BLOCK];
 	float texel_weight_rb[MAX_TEXELS_PER_BLOCK];
 	float texel_weight_gb[MAX_TEXELS_PER_BLOCK];
-	float texel_weight_ra[MAX_TEXELS_PER_BLOCK];
+//	float texel_weight_ra[MAX_TEXELS_PER_BLOCK];
 
 	float texel_weight_r[MAX_TEXELS_PER_BLOCK];
 	float texel_weight_g[MAX_TEXELS_PER_BLOCK];

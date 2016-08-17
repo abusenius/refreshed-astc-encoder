@@ -459,7 +459,7 @@ float funcname( \
 TWO_COMPONENT_ERROR_FUNC(compute_error_squared_rg, 0, 1, xy, rg)
 TWO_COMPONENT_ERROR_FUNC(compute_error_squared_rb, 0, 2, xz, rb)
 TWO_COMPONENT_ERROR_FUNC(compute_error_squared_gb, 1, 2, yz, gb)
-TWO_COMPONENT_ERROR_FUNC(compute_error_squared_ra, 0, 3, zw, ra)
+//TWO_COMPONENT_ERROR_FUNC(compute_error_squared_ra, 0, 3, zw, ra)
 
 // function to compute the error across a tile when using a particular set of
 // lines for a particular partitioning. Also compute the length of each

@@ -44,7 +44,6 @@ int realign_weights(astc_decode_mode decode_mode,
 	// get the appropriate block descriptor
 	const block_size_descriptor *bsd = get_block_size_descriptor(xdim, ydim, zdim);
 	const decimation_table *const *ixtab2 = bsd->decimation_tables;
-
 	const decimation_table *it = ixtab2[bsd->block_modes[scb->block_mode].decimation_mode];
 
 	int is_dual_plane = bsd->block_modes[scb->block_mode].is_dual_plane;
@@ -430,7 +429,7 @@ float prepare_error_weight_block(const astc_codec_image * input_image,
 		ewb->texel_weight_rg[i] = (ewb->error_weights[i].x + ewb->error_weights[i].y) * 0.5f;
 		ewb->texel_weight_rb[i] = (ewb->error_weights[i].x + ewb->error_weights[i].z) * 0.5f;
 		ewb->texel_weight_gb[i] = (ewb->error_weights[i].y + ewb->error_weights[i].z) * 0.5f;
-		ewb->texel_weight_ra[i] = (ewb->error_weights[i].x + ewb->error_weights[i].w) * 0.5f;
+//		ewb->texel_weight_ra[i] = (ewb->error_weights[i].x + ewb->error_weights[i].w) * 0.5f;
 
 		ewb->texel_weight_gba[i] = (ewb->error_weights[i].y + ewb->error_weights[i].z + ewb->error_weights[i].w) * 0.333333f;
 		ewb->texel_weight_rba[i] = (ewb->error_weights[i].x + ewb->error_weights[i].z + ewb->error_weights[i].w) * 0.333333f;
@@ -1125,7 +1124,6 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 	// ei_bits - number of bits available for weights and color data if all color endpoints are of the same type
 	// color_bits - minimum number of bits needed to store color data (QUANT_5, FMT_LUMINANCE)
 	static const int max_weight_bits_for_partition_count_1plane[5] = { 0, 111 - 5, 99 - 10, 99 - 14, 99 - 19 };
-	float mode_cutoff = ewp.block_mode_cutoff;
 
 	const block_size_descriptor_sorted *sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 0);
 	const decimation_table *const *ixtab3 = sorted_bsd->decimation_tables;
@@ -1452,7 +1450,6 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 	// ei_bits - number of bits available for weights and color data if all color endpoints are of the same type
 	// color_bits - minimum number of bits needed to store color data (QUANT_5, FMT_LUMINANCE)
 	static const int max_weight_bits_for_partition_count_2planes[5] = { 0, 109 - 5, 97 - 10, 97 - 14, 97 - 19 };
-	float mode_cutoff = ewp.block_mode_cutoff;
 
 	const block_size_descriptor_sorted *sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 1);
 	const decimation_table *const *ixtab3 = sorted_bsd->decimation_tables;
