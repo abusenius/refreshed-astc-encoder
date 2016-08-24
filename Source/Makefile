@@ -40,6 +40,7 @@ SOURCES = \
 	astc_opencl.cpp \
     mathlib.cpp \
     softfloat.cpp \
+	metrohash64 \
 
 
 HEADERS = \
@@ -48,7 +49,9 @@ HEADERS = \
 	astc_codec_batch.h \
     mathlib.h \
     softfloat.h \
-    stb_image.c
+    stb_image.c \
+	metrohash64.h \
+	platform.h
 
 
 OBJECTS = $(SOURCES:.cpp=.o)

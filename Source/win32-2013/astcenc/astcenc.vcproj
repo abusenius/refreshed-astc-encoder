@@ -261,6 +261,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\metrohash64.cpp"
+				>
+			</File>
+			<File
 				RelativePath="..\..\astc_weight_align.cpp"
 				>
 			</File>
@@ -312,6 +316,14 @@
 			</File>
 			<File
 				RelativePath="..\..\vectypes.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\platform.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\metrohash64.h"
 				>
 			</File>
 		</Filter>

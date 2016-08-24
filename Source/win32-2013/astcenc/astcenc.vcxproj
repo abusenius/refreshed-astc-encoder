@@ -175,6 +175,7 @@
     <ClCompile Include="..\..\astc_symbolic_physical.cpp" />
     <ClCompile Include="..\..\astc_toplevel.cpp" />
     <ClCompile Include="..\..\astc_opencl.cpp" />
+	<ClCompile Include="..\..\metrohash64.cpp" />
     <ClCompile Include="..\..\astc_weight_align.cpp" />
     <ClCompile Include="..\..\astc_weight_quant_xfer_tables.cpp" />
     <ClCompile Include="..\..\mathlib.cpp" />
@@ -189,6 +190,8 @@
     <ClInclude Include="..\..\softfloat.h" />
     <ClInclude Include="stdint.h" />
     <ClInclude Include="..\..\vectypes.h" />
+	<ClInclude Include="..\..\platform.h" />
+	<ClInclude Include="..\..\metrohash64.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
