@@ -11,7 +11,7 @@ extern cl_program opencl_program;
 extern cl_context opencl_context;
 
 #define OPENCL_KERNELS_SOURCE_PATH ".\\"
-#define OPENCL_KERNEL_FILES "astc_find_best_partitioning.cl", "astc_averages_and_directions.cl"
+#define OPENCL_KERNEL_FILES "astc_find_best_partitioning.cl", "astc_averages_and_directions.cl", "astc_weight_align.cl"
 #define OPENCL_COMPILER_OPTIONS "-cl-mad-enable"
 
 #define OCL_IS_BLOCKING false

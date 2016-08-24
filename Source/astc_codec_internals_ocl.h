@@ -18,12 +18,15 @@
 	typedef ulong uint64_t;
 	typedef unsigned char uint8_t;
 	typedef unsigned short uint16_t;
+	typedef int int32_t;
+	typedef uint uint32_t;
 #else
 	// just to make IDE happy with OpenCL keywords and macros
 	static_assert(false, "This file could be included only from OpenCL kernel");
 	#define __global
 	#define __local
 	#define __kernel
+	#define constant
     #define get_global_id(i) i
 	#define sqrt(i) i
 
