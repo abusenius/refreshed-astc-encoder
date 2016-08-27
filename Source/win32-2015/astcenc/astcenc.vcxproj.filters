@@ -9,9 +9,9 @@
       <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
       <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
     </Filter>
-    <Filter Include="Resource Files">
-      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
-      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav</Extensions>
+    <Filter Include="kernels">
+      <UniqueIdentifier>{fd0c651b-2d77-4d35-abcf-14d0d4705b01}</UniqueIdentifier>
+      <Extensions>cl</Extensions>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -66,10 +66,7 @@
     <ClCompile Include="..\..\astc_toplevel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-	<ClCompile Include="..\..\astc_opencl.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-	<ClCompile Include="..\..\metrohash64.cpp">
+    <ClCompile Include="..\..\astc_opencl.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\mathlib.cpp">
@@ -99,15 +96,18 @@
     <ClCompile Include="..\..\astc_weight_quant_xfer_tables.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\metrohash64.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\astc_codec_internals.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-	<ClInclude Include="..\..\astc_opencl.h">
+    <ClInclude Include="..\..\astc_opencl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-	<ClInclude Include="..\..\astc_codec_batch.h">
+    <ClInclude Include="..\..\astc_codec_batch.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\mathlib.h">
@@ -116,17 +116,25 @@
     <ClInclude Include="..\..\softfloat.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="stdint.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\vectypes.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-	<ClInclude Include="..\..\platform.h">
+    <ClInclude Include="..\..\astc_codec_internals_ocl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-	<ClInclude Include="..\..\metrohash64.h">
+    <ClInclude Include="..\..\metrohash64.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\platform.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\astc_find_best_partitioning.cl">
+      <Filter>kernels</Filter>
+    </None>
+    <None Include="..\..\astc_averages_and_directions.cl">
+      <Filter>kernels</Filter>
+    </None>
   </ItemGroup>
 </Project>
