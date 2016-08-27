@@ -17,6 +17,7 @@ extern cl_context opencl_context;
 #define OCL_IS_BLOCKING false
 
 #define OCL_CHECK_STATUS(str) if(status != CL_SUCCESS) { fprintf(stderr, "%s, errorcode: %i %s\n", str, status, cl_errcode_to_str(status)); exit(-1); }
+#define OCL_CHECK_STATUS_R(str, code) if(status != CL_SUCCESS) { fprintf(stderr, "%s, errorcode: %i %s\n", str, status, cl_errcode_to_str(status)); return code; }
 #define OCL_RELEASE_OBJECT(type, name) { status = clRelease##type(name); OCL_CHECK_STATUS("Cannot release "#type" "#name); }
 #define OCL_CREATE_BUFFER(name, flags, size, source) { name = clCreateBuffer(opencl_context, flags, size, source, &status);\
 								OCL_CHECK_STATUS("Cannot create buffer "#name); }

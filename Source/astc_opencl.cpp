@@ -1,8 +1,13 @@
 #include "astc_codec_batch.h"
+#include "metrohash64.h"
+
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <locale.h>
+#include <string>
+#include <vector>
+
 
 cl_platform_id opencl_platform;
 cl_device_id opencl_device;
@@ -80,20 +85,20 @@ static cl_int printPlatformInfo(cl_platform_id platform)
 	return CL_SUCCESS;
 }
 
-static cl_int readSource(const char *sourcePath, const char *sourceFilename, char** sourceString)
+static cl_int readFile(const char *path, const char *filename, char** sourceString, size_t *file_size)
 {
 	FILE *fp;
 	size_t err;
 	size_t size;
 #define MAX_PATH_LENGTH 512
 	char fullFilename[MAX_PATH_LENGTH];
-	strcpy_s(fullFilename, MAX_PATH_LENGTH, sourcePath);
-	strcat_s(fullFilename, MAX_PATH_LENGTH, sourceFilename);
+	strcpy_s(fullFilename, MAX_PATH_LENGTH, path);
+	strcat_s(fullFilename, MAX_PATH_LENGTH, filename);
 
 	char *source;
 	fopen_s(&fp, fullFilename, "rb");
 	if (fp == NULL) {
-		fprintf(stderr, "Could not open kernel file: %s\n", fullFilename);
+		fprintf(stderr, "Could not open file (read): %s\n", fullFilename);
 		return -1;
 	}
 
@@ -127,6 +132,142 @@ static cl_int readSource(const char *sourcePath, const char *sourceFilename, cha
 	source[size] = '\0';
 
 	*sourceString = source;
+	if (file_size)
+		*file_size = size;
+	return CL_SUCCESS;
+}
+
+
+
+static void generateBinaryFilename(cl_platform_id platform, cl_device_id device, uint64_t source_hash, char *filename)
+{
+	cl_int status;
+	MetroHash64 hasher;
+	uint8_t buf[512], plat_name[512];
+	size_t size;
+
+	hasher.Initialize();
+
+	status = clGetPlatformInfo(platform, CL_PLATFORM_VENDOR, sizeof(buf), buf, &size);
+	if (status == CL_SUCCESS) hasher.Update(buf, size);
+
+	status = clGetPlatformInfo(platform, CL_PLATFORM_VERSION, sizeof(buf), buf, &size);
+	if (status == CL_SUCCESS) hasher.Update(buf, size);
+
+	status = clGetPlatformInfo(platform, CL_PLATFORM_NAME, sizeof(plat_name), plat_name, &size);
+	if (status == CL_SUCCESS) hasher.Update(plat_name, size);
+
+	status = clGetDeviceInfo(device, CL_DEVICE_VENDOR, sizeof(buf), buf, &size);
+	if (status == CL_SUCCESS) hasher.Update(buf, size);
+
+	status = clGetDeviceInfo(device, CL_DRIVER_VERSION, sizeof(buf), buf, &size);
+	if (status == CL_SUCCESS) hasher.Update(buf, size);
+
+	status = clGetDeviceInfo(device, CL_DEVICE_NAME, sizeof(buf), buf, &size);
+	if (status == CL_SUCCESS) hasher.Update(buf, size);
+
+	char * dev_name_short = strtok((char*)buf, " \"*:,<>?|()\\/`'_");
+	char * plat_name_short = strtok((char*)plat_name, " \"*:,<>?|()\\/`'_");
+
+	uint64_t driver_hash;
+	hasher.Finalize((uint8_t*)&driver_hash);
+
+	sprintf(filename, "%.*s_%.*s_%016llX_%016llX.bin", 20, plat_name_short, 20, dev_name_short, driver_hash, source_hash);
+}
+
+static cl_int loadBinary(cl_context context, cl_device_id device, const char *path, const char *fname, cl_program *program, int silentmode)
+{
+	cl_int status, binary_status;
+	char *binary;
+	size_t size;
+	if (CL_SUCCESS != readFile(path, fname, &binary, &size))
+		return CL_INVALID_BINARY;
+
+	if (!silentmode)
+		printf("Found precompiled kernels %s\n", fname);
+
+	*program = clCreateProgramWithBinary(context, 1, &device, &size, (const unsigned char**)&binary, &binary_status, &status);
+	delete[] binary;
+
+	if (binary_status)
+	{
+		if (!silentmode)
+			printf("clCreateProgramWithBinary() failed, binary_status: %i %s\n", binary_status, cl_errcode_to_str(binary_status));
+		return binary_status;
+	}
+
+	if (status && !silentmode)
+		printf("clCreateProgramWithBinary() failed, errorcode: %i %s\n", status, cl_errcode_to_str(status));
+
+	return status;
+}
+
+static cl_int saveBinary(const char *path, const char *fname, cl_program opencl_program, const char *compilerOptions, int silentmode)
+{
+	cl_int status;
+
+
+	// retrieve compiled kernel
+	size_t size, bytes_written;
+	status = clGetProgramInfo(opencl_program, CL_PROGRAM_BINARY_SIZES, sizeof(size_t), &size, NULL);
+	OCL_CHECK_STATUS_R("Unable to retrieve program binary size", -1);
+	if (size == 0)
+	{
+		if (!silentmode)
+			printf("The binary is not available for current device");
+		return -1;
+	}
+
+	std::vector<unsigned char> binary(size);
+	unsigned char *ptr = &binary[0];
+	status = clGetProgramInfo(opencl_program, CL_PROGRAM_BINARIES, sizeof(void*), &ptr, NULL);
+	OCL_CHECK_STATUS_R("Unable to retrieve program binary", -1);
+	
+
+	// save binary to file
+	std::string fullFilename(path);
+	fullFilename += fname;
+
+	FILE *fp = fopen(fullFilename.c_str(), "wb");
+	if (!fp)
+	{
+		fprintf(stderr, "Could not open file (write): %s\n", fullFilename.c_str());
+		return -1;
+	}
+
+	bytes_written = fwrite(&binary[0], sizeof(char), size, fp);
+	fclose(fp);
+	if ((size != bytes_written) && !silentmode)
+	{
+		printf("The binary size is %zi but only %zi bytes written to file\n", size, bytes_written);
+		return -1;
+	}
+
+	// save info to index.txt
+	fullFilename = path;
+	fullFilename += "index.txt";
+
+	fp = fopen(fullFilename.c_str(), "a");
+	if (!fp)
+	{
+		fprintf(stderr, "Could not open file (append): %s\n", fullFilename.c_str());
+		return -1;
+	}
+
+	std::string record(fname);
+	record += "\t";
+	record += compilerOptions;
+	record += "\n";
+
+	size = record.size();
+	bytes_written = fwrite(record.c_str(), sizeof(char), size, fp);
+	fclose(fp);
+	if ((size != bytes_written) && !silentmode)
+	{
+		printf("The log size is %zi but only %zi bytes written to file\n", size, bytes_written);
+		return -1;
+	}
+	
 	return CL_SUCCESS;
 }
 
@@ -137,6 +278,7 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 	cl_platform_id *platforms;
 	cl_device_id *devices;
 	cl_int status;
+	MetroHash64 hasher;
 
 	// get platform
 	status = clGetPlatformIDs(0, NULL, &numPlatforms);
@@ -180,21 +322,19 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 	opencl_context = clCreateContext(context_props, 1, &opencl_device, NULL, NULL, &status);
 	OCL_CHECK_STATUS("Cannot create context");
 
-	// create program and compile kernels
+
+	// read source files with kernels
+	hasher.Initialize();
 	char *source_names[] = { OPENCL_KERNEL_FILES };
 #define FILE_COUNT ((int)(sizeof(source_names)/sizeof(source_names[0])))
 	char *sources[FILE_COUNT];
 	for (int i = 0; i < FILE_COUNT; i++)
 	{
-		status = readSource(OPENCL_KERNELS_SOURCE_PATH, source_names[i], &sources[i]);
+		size_t filesize;
+		status = readFile(OPENCL_KERNELS_SOURCE_PATH, source_names[i], &sources[i], &filesize);
 		OCL_CHECK_STATUS("Cannot read OpenCL kernel source file");
+		hasher.Update((uint8_t*)sources[i], filesize);
 	}
-
-	opencl_program = clCreateProgramWithSource(opencl_context, FILE_COUNT, (const char **)sources, NULL, &status);
-	for (int i = 0; i < FILE_COUNT; i++)
-		delete[] sources[i];
-	OCL_CHECK_STATUS("Cannot create OpenCL program object");
-
 
 	//set kernel compile-time constants
 	int texels_per_block = xdim * ydim * zdim;
@@ -207,17 +347,39 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 	if (sizeof(void*) == 8)
 		strcat(compile_flags, " -D OCL_USE_64BIT_POINTERS");
 
-	char compileOptions[4096];
+	char compilerOptions[4096];
 	setlocale(LC_NUMERIC, "C");
-	sprintf(compileOptions, "%s -I %s -D XDIM=%i -D YDIM=%i -D ZDIM=%i -D TEXELS_PER_BLOCK=%i -D WEIGHT_IMPRECISION_ESTIM_SQUARED=%gf -D PLIMIT=%i %s",
+	sprintf(compilerOptions, "%s -I %s -D XDIM=%i -D YDIM=%i -D ZDIM=%i -D TEXELS_PER_BLOCK=%i -D WEIGHT_IMPRECISION_ESTIM_SQUARED=%gf -D PLIMIT=%i %s",
 		OPENCL_COMPILER_OPTIONS, OPENCL_KERNELS_SOURCE_PATH, xdim, ydim, zdim, texels_per_block, weight_imprecision_estim_squared, ewp->partition_search_limit, compile_flags);
 	if (!silentmode)
-		printf("Batch size: %i\nOpenCL compiler options:\n%s\n\n", batch_size, compileOptions);
+		printf("Batch size: %i\nOpenCL compiler options:\n%s\n\n", batch_size, compilerOptions);
 
-	//build program
+	hasher.Update((const uint8_t*)compilerOptions, strlen(compilerOptions));
+	uint64_t source_hash;
+	hasher.Finalize((uint8_t*)&source_hash);
+
+	// try to load precompiled binaries from disk
+	char fname[512];
+	bool loaded_from_file = false;
+	generateBinaryFilename(opencl_platform, opencl_device, source_hash, fname);
+	status = loadBinary(opencl_context, opencl_device, "", fname, &opencl_program, silentmode);
+	if (status == CL_SUCCESS)
+	{
+		loaded_from_file = true;
+	}
+	else
+	{
+		opencl_program = clCreateProgramWithSource(opencl_context, FILE_COUNT, (const char **)sources, NULL, &status);
+	}
+	for (int i = 0; i < FILE_COUNT; i++)
+		delete[] sources[i];
+	
+	OCL_CHECK_STATUS("Cannot create OpenCL program object");
+	
+	// build program
 	if (!silentmode)
-		printf("Compiling kernels...  ");
-	status = clBuildProgram(opencl_program, 1, &opencl_device, compileOptions, NULL, NULL);
+		printf(loaded_from_file ? "Building kernels from file... " : "Compiling kernels...  ");
+	status = clBuildProgram(opencl_program, 1, &opencl_device, compilerOptions, NULL, NULL);
 	if (status != CL_SUCCESS)
 	{
 		fprintf(stderr, "Cannot build OpenCL program");
@@ -229,18 +391,15 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 			OCL_CHECK_STATUS("Cannot get build log size");
 
 			//retreiving build log
-			char *buildLog;
-			buildLog = new char[logSize];
+			std::vector<char> buildLog(logSize);
 			
-			status = clGetProgramBuildInfo(opencl_program, opencl_device, CL_PROGRAM_BUILD_LOG, logSize, buildLog, NULL);
+			status = clGetProgramBuildInfo(opencl_program, opencl_device, CL_PROGRAM_BUILD_LOG, logSize, &buildLog[0], NULL);
 			if (status != CL_SUCCESS) {
 				fprintf(stderr, "Unable to retreive Build log");
-				delete[] buildLog;
 				exit(-1);
 			}
-			buildLog[logSize - 1] = '\0';
 
-			fprintf(stderr, "Build Log:\n%s\n", buildLog);
+			fprintf(stderr, "Build Log:\n%.*s\n", logSize, buildLog);
 		}
 		getchar();
 		exit(-1);
@@ -248,6 +407,9 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 
 	if (!silentmode)
 		printf("Done\n\n");
+
+	if (!loaded_from_file)
+		saveBinary("", fname, opencl_program, compilerOptions, silentmode);
 }
 
 
