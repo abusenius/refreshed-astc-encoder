@@ -10,7 +10,6 @@ extern cl_device_id opencl_device;
 extern cl_program opencl_program;
 extern cl_context opencl_context;
 
-#define OPENCL_KERNELS_SOURCE_PATH ".\\"
 #define OPENCL_KERNEL_FILES "astc_find_best_partitioning.cl", "astc_averages_and_directions.cl", "astc_weight_align.cl"
 #define OPENCL_COMPILER_OPTIONS "-cl-mad-enable"
 
@@ -36,11 +35,20 @@ extern cl_context opencl_context;
 #define OCL_SET_KERNEL_ARG(kernname, seq, argname) { status = set_kernel_argument(kernname, seq, argname);\
 								OCL_CHECK_STATUS("Cannot set argument "#seq" ("#argname") for kernel "#kernname); }
 
+struct opencl_options
+{
+	const char* kernels_source_path;
+	const char* kernels_cache_path;
+	cl_uint platform;
+	cl_uint device;
+	bool enable_cache_read;
+	bool enable_cache_write;
+};
 
-
-void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode, int batch_size, int xdim, int ydim, int zdim, const error_weighting_params* ewp, astc_decode_mode decode_mode);
+void init_opencl(const opencl_options * oclo, int batch_size, int xdim, int ydim, int zdim, const error_weighting_params * ewp, astc_decode_mode decode_mode, int silentmode);
 void destroy_opencl();
 char const* cl_errcode_to_str(cl_int status);
+
 
 enum class ocl_buffer_type
 {

@@ -1239,6 +1239,26 @@ int main(int argc, char **argv)
 				"\n"
 				"\n"
 				"\n"
+				"OpenCL options:\n"
+				"--------------\n"
+				"\n"
+				" -ocl <platform> <device>\n"
+				"      Set OpenCL device that is used to accelerate encoding.\n"
+				"\n"
+				" -ocl_sources <path>\n"
+				"      Set path to the kernel sources.\n"
+				"\n"
+				" -ocl_cache <path>\n"
+				"      Set directory to store compiled kernels.\n"
+				"\n"
+				" -ocl_cache_mode <number>\n"
+				"      Set kernels caching policy (default is 2):\n"
+				"       0 - disable caching, compile kernels from source files\n"
+				"       1 - enable reading binaries from cache\n"
+				"       2 - enable reading and storing new compiled kernels\n"
+				"\n"
+				"\n"
+				"\n"
 				"Other options:\n"
 				"--------------\n"
 				"\n"
@@ -1298,9 +1318,6 @@ int main(int argc, char **argv)
 				" -time\n"
 				"      Displays time taken for entire run, together with time taken for\n"
 				"      coding step only. If requested, this is output even in -silentmode.\n"
-				"\n"
-				" -ocl <platform> <device>\n"
-				"      Set OpenCL device that is used to accelerate encoding.\n"
 				"\n"
 				" -showpsnr\n"
 				"      In test mode (-t), displays PSNR difference between input and output\n"
@@ -1492,9 +1509,14 @@ int main(int argc, char **argv)
 	int low_fstop = -10;
 	int high_fstop = 10;
 
+	opencl_options oclo;
+	oclo.device = 0;
+	oclo.platform = 0;
+	oclo.enable_cache_read = true;
+	oclo.enable_cache_write = true;
+	oclo.kernels_cache_path = ".";
+	oclo.kernels_source_path = ".";
 	int batch_size = 128;
-	int opencl_plat_id = 0;
-	int opencl_dev_id = 0;
 
 	// parse the commandline's encoding options.
 	int argidx;
@@ -2242,8 +2264,60 @@ int main(int argc, char **argv)
 				printf("-ocl switch with less than 2 arguments\n");
 				exit(1);
 			}
-			opencl_plat_id = atoi(argv[argidx - 2]);
-			opencl_dev_id = atoi(argv[argidx - 1]);
+			oclo.platform = atoi(argv[argidx - 2]);
+			oclo.device = atoi(argv[argidx - 1]);
+		}
+
+		else if (!strcmp(argv[argidx], "-ocl_cache_mode"))
+		{
+			argidx += 2;
+			if (argidx > argc)
+			{
+				printf("-ocl_cache_mode switch with less than 1 arguments\n");
+				exit(1);
+			}
+			int mode = atoi(argv[argidx - 1]);
+			switch (mode)
+			{
+			case 0:
+				oclo.enable_cache_read = false;
+				oclo.enable_cache_write = false;
+				break;
+			case 1:
+				oclo.enable_cache_read = true;
+				oclo.enable_cache_write = false;
+				break;
+			case 2:
+				oclo.enable_cache_read = true;
+				oclo.enable_cache_write = true;
+				break;
+			default:
+				printf("Unsupported kernels cache mode\n");
+				exit(-1);
+				break;
+			}
+		}
+
+		else if (!strcmp(argv[argidx], "-ocl_cache"))
+		{
+			argidx += 2;
+			if (argidx > argc)
+			{
+				printf("-ocl_cache switch with less than 1 arguments\n");
+				exit(1);
+			}
+			oclo.kernels_cache_path = argv[argidx - 1];
+		}
+
+		else if (!strcmp(argv[argidx], "-ocl_sources"))
+		{
+			argidx += 2;
+			if (argidx > argc)
+			{
+				printf("-ocl_sources switch with less than 1 arguments\n");
+				exit(1);
+			}
+			oclo.kernels_source_path = argv[argidx -1];
 		}
 
 		else if (!strcmp(argv[argidx], "-mpsnr"))
@@ -2272,13 +2346,13 @@ int main(int argc, char **argv)
 				exit(1);
 			}
 
-			#ifdef DEBUG_PRINT_DIAGNOSTICS
-				diagnostics_tile = atoi(argv[argidx - 1]);
-			#else
+			//#ifdef DEBUG_PRINT_DIAGNOSTICS
+			//	diagnostics_tile = atoi(argv[argidx - 1]);
+			//#else
 				//printf("-diag switch given, but codec has been compiled without\n" "DEBUG_PRINT_DIAGNOSTICS enabled; please recompile.\n");
 				printf("-diag switch is unsupported in this version.\n");
 				exit(1);
-			#endif
+			//#endif
 		}
 		else if (!strcmp(argv[argidx], "-bmstat"))
 		{
@@ -2668,7 +2742,7 @@ int main(int argc, char **argv)
 		}
 		ewp.weight_mode_limit_2planes = i;
 
-		init_opencl(opencl_plat_id, opencl_dev_id, silentmode, batch_size, xdim, ydim, zdim, &ewp, decode_mode);
+		init_opencl(&oclo, batch_size, xdim, ydim, zdim, &ewp, decode_mode, silentmode);
 	}
 
 	start_coding_time = get_time();

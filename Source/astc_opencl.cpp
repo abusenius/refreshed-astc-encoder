@@ -14,6 +14,12 @@ cl_device_id opencl_device;
 cl_program opencl_program;
 cl_context opencl_context;
 
+#ifdef WIN32
+	#define PATH_SEPPARATOR "\\"
+#else
+	#define PATH_SEPPARATOR "/"
+#endif // WIN32
+
 static cl_int printDeviceInfo(cl_device_id device)
 {
 	cl_int status = CL_SUCCESS;
@@ -90,34 +96,34 @@ static cl_int readFile(const char *path, const char *filename, char** sourceStri
 	FILE *fp;
 	size_t err;
 	size_t size;
-#define MAX_PATH_LENGTH 512
-	char fullFilename[MAX_PATH_LENGTH];
-	strcpy_s(fullFilename, MAX_PATH_LENGTH, path);
-	strcat_s(fullFilename, MAX_PATH_LENGTH, filename);
+
+	std::string fullFilename(path);
+	fullFilename += PATH_SEPPARATOR;
+	fullFilename += filename;
 
 	char *source;
-	fopen_s(&fp, fullFilename, "rb");
+	fopen_s(&fp, fullFilename.c_str(), "rb");
 	if (fp == NULL) {
-		fprintf(stderr, "Could not open file (read): %s\n", fullFilename);
-		return -1;
+		fprintf(stderr, "Could not open file (read): %s\n", fullFilename.c_str());
+		return CL_INVALID_VALUE;
 	}
 
 	err = fseek(fp, 0, SEEK_END);
 	if (err != 0) {
 		fprintf(stderr, "Error seeking to end of file\n");
-		return -1;
+		return CL_INVALID_VALUE;
 	}
 
 	size = ftell(fp);
 	if (size < 0) {
 		fprintf(stderr, "Error getting file position\n");
-		return -1;
+		return CL_INVALID_VALUE;
 	}
 
 	err = fseek(fp, 0, SEEK_SET);
 	if (err != 0) {
 		fprintf(stderr, "Error seeking to start of file\n");
-		return -1;
+		return CL_INVALID_VALUE;
 	}
 
 	source = new char[size + 1];
@@ -126,7 +132,7 @@ static cl_int readFile(const char *path, const char *filename, char** sourceStri
 	if (err != size) {
 		fprintf(stderr, "only %u bytes read\n", (unsigned int)err);
 		delete[] source;
-		return -1;
+		return CL_INVALID_VALUE;
 	}
 
 	source[size] = '\0';
@@ -226,6 +232,7 @@ static cl_int saveBinary(const char *path, const char *fname, cl_program opencl_
 
 	// save binary to file
 	std::string fullFilename(path);
+	fullFilename += PATH_SEPPARATOR;
 	fullFilename += fname;
 
 	FILE *fp = fopen(fullFilename.c_str(), "wb");
@@ -245,6 +252,7 @@ static cl_int saveBinary(const char *path, const char *fname, cl_program opencl_
 
 	// save info to index.txt
 	fullFilename = path;
+	fullFilename += PATH_SEPPARATOR;
 	fullFilename += "index.txt";
 
 	fp = fopen(fullFilename.c_str(), "a");
@@ -271,7 +279,7 @@ static cl_int saveBinary(const char *path, const char *fname, cl_program opencl_
 	return CL_SUCCESS;
 }
 
-void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode, int batch_size, int xdim, int ydim, int zdim, const error_weighting_params * ewp, astc_decode_mode decode_mode)
+void init_opencl(const opencl_options * oclo, int batch_size, int xdim, int ydim, int zdim, const error_weighting_params * ewp, astc_decode_mode decode_mode, int silentmode)
 {
 	cl_uint numPlatforms = 0;
 	cl_uint numDevices = 0;
@@ -283,37 +291,37 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 	// get platform
 	status = clGetPlatformIDs(0, NULL, &numPlatforms);
 	OCL_CHECK_STATUS("Cannot get number of platforms");
-	if (numPlatforms <= platform_number) {
-		fprintf(stderr, "Only %i platforms found. Platform with index %i does not exists.", numPlatforms, platform_number);
+	if (numPlatforms <= oclo->platform) {
+		fprintf(stderr, "Only %i platforms found. Platform with index %i does not exists.", numPlatforms, oclo->platform);
 		exit(-1);
 	}
 
 	platforms = new cl_platform_id[numPlatforms];
 
 	status = clGetPlatformIDs(numPlatforms, platforms, NULL);
-	opencl_platform = platforms[platform_number];
+	opencl_platform = platforms[oclo->platform];
 	delete[] platforms;
 
 	if (!silentmode) {
-		printf("%i platforms found. Using platform %i\n", numPlatforms, platform_number);
+		printf("%i platforms found. Using platform %i\n", numPlatforms, oclo->platform);
 		printPlatformInfo(opencl_platform);
 	}
 
 	// get device
 	status = clGetDeviceIDs(opencl_platform, CL_DEVICE_TYPE_ALL, 0, NULL, &numDevices);
 	OCL_CHECK_STATUS("Cannot get number of devices");
-	if (numDevices <= device_number) {
-		fprintf(stderr, "Only %i devices found. Device with index %i does not exists.", numDevices, device_number);
+	if (numDevices <= oclo->device) {
+		fprintf(stderr, "Only %i devices found. Device with index %i does not exists.", numDevices, oclo->device);
 		exit(-1);
 	}
 
 	devices = new cl_device_id[numDevices];
 
 	status = clGetDeviceIDs(opencl_platform, CL_DEVICE_TYPE_ALL, numDevices, devices, NULL);
-	opencl_device = devices[device_number];
+	opencl_device = devices[oclo->device];
 	delete[] devices;
 	if (!silentmode) {
-		printf("\n%i devices found on platform %i. Using device %i\n", numDevices, platform_number, device_number);
+		printf("\n%i devices found on platform %i. Using device %i\n", numDevices, oclo->platform, oclo->device);
 		printDeviceInfo(opencl_device);
 	}
 
@@ -331,7 +339,7 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 	for (int i = 0; i < FILE_COUNT; i++)
 	{
 		size_t filesize;
-		status = readFile(OPENCL_KERNELS_SOURCE_PATH, source_names[i], &sources[i], &filesize);
+		status = readFile(oclo->kernels_source_path, source_names[i], &sources[i], &filesize);
 		OCL_CHECK_STATUS("Cannot read OpenCL kernel source file");
 		hasher.Update((uint8_t*)sources[i], filesize);
 	}
@@ -350,7 +358,7 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 	char compilerOptions[4096];
 	setlocale(LC_NUMERIC, "C");
 	sprintf(compilerOptions, "%s -I %s -D XDIM=%i -D YDIM=%i -D ZDIM=%i -D TEXELS_PER_BLOCK=%i -D WEIGHT_IMPRECISION_ESTIM_SQUARED=%gf -D PLIMIT=%i %s",
-		OPENCL_COMPILER_OPTIONS, OPENCL_KERNELS_SOURCE_PATH, xdim, ydim, zdim, texels_per_block, weight_imprecision_estim_squared, ewp->partition_search_limit, compile_flags);
+		OPENCL_COMPILER_OPTIONS, ".", xdim, ydim, zdim, texels_per_block, weight_imprecision_estim_squared, ewp->partition_search_limit, compile_flags);
 	if (!silentmode)
 		printf("Batch size: %i\nOpenCL compiler options:\n%s\n\n", batch_size, compilerOptions);
 
@@ -362,15 +370,13 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 	char fname[512];
 	bool loaded_from_file = false;
 	generateBinaryFilename(opencl_platform, opencl_device, source_hash, fname);
-	status = loadBinary(opencl_context, opencl_device, "", fname, &opencl_program, silentmode);
-	if (status == CL_SUCCESS)
+	if (oclo->enable_cache_read)
 	{
-		loaded_from_file = true;
+		status = loadBinary(opencl_context, opencl_device, oclo->kernels_cache_path, fname, &opencl_program, silentmode);
+		loaded_from_file = (CL_SUCCESS == status);
 	}
-	else
-	{
+	if (!loaded_from_file)
 		opencl_program = clCreateProgramWithSource(opencl_context, FILE_COUNT, (const char **)sources, NULL, &status);
-	}
 	for (int i = 0; i < FILE_COUNT; i++)
 		delete[] sources[i];
 	
@@ -399,7 +405,7 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 				exit(-1);
 			}
 
-			fprintf(stderr, "Build Log:\n%.*s\n", logSize, buildLog);
+			fprintf(stderr, "Build Log:\n%.*s\n", (int)logSize, &buildLog[0]);
 		}
 		getchar();
 		exit(-1);
@@ -408,8 +414,8 @@ void init_opencl(cl_uint platform_number, cl_uint device_number, int silentmode,
 	if (!silentmode)
 		printf("Done\n\n");
 
-	if (!loaded_from_file)
-		saveBinary("", fname, opencl_program, compilerOptions, silentmode);
+	if (oclo->enable_cache_write && !loaded_from_file)
+		saveBinary(oclo->kernels_cache_path, fname, opencl_program, compilerOptions, silentmode);
 }
 
 
