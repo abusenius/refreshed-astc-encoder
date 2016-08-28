@@ -202,6 +202,7 @@
   <ItemGroup>
     <None Include="..\..\astc_averages_and_directions.cl" />
     <None Include="..\..\astc_find_best_partitioning.cl" />
+    <None Include="..\..\astc_weight_align.cl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

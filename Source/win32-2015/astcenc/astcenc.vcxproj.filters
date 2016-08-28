@@ -136,5 +136,8 @@
     <None Include="..\..\astc_averages_and_directions.cl">
       <Filter>kernels</Filter>
     </None>
+    <None Include="..\..\astc_weight_align.cl">
+      <Filter>kernels</Filter>
+    </None>
   </ItemGroup>
 </Project>
