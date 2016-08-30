@@ -753,6 +753,30 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 3, partition_indices_1plane_batch);
 	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 4, partition_indices_2planes_batch);
 	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 5, ewb_batch);
+
+	const block_size_descriptor_sorted *bsd_1plane = get_sorted_block_size_descriptor(xdim, ydim, zdim, 0);
+	const block_size_descriptor_sorted *bsd_2planes = get_sorted_block_size_descriptor(xdim, ydim, zdim, 1);
+	OCL_CREATE_BUFFER(cae.bsd_1plane, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(block_size_descriptor_sorted), NULL);
+	OCL_CREATE_BUFFER(cae.bsd_2planes, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(block_size_descriptor_sorted), NULL);
+	OCL_WRITE_BUFFER(cae.bsd_1plane, sizeof(block_size_descriptor_sorted), bsd_1plane);
+	OCL_WRITE_BUFFER(cae.bsd_2planes, sizeof(block_size_descriptor_sorted), bsd_2planes);
+
+	OCL_CREATE_KERNEL(cae, compute_angular_endpoints_1plane);
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_1plane, 0, blk_stat);
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_1plane, 1, cae.bsd_1plane);
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_1plane, 2, cae.decimated_quantized_weights);
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_1plane, 3, cae.decimated_weights);
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_1plane, 4, cae.weight_low_value1);
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_1plane, 5, cae.weight_high_value1);
+	OCL_CREATE_KERNEL(cae, compute_angular_endpoints_2planes);
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_2planes, 0, blk_stat);
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_2planes, 1, cae.bsd_2planes);
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_2planes, 2, cae.decimated_quantized_weights);
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_2planes, 3, cae.decimated_weights);
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_2planes, 4, cae.weight_low_value1);
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_2planes, 5, cae.weight_high_value1);
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_2planes, 6, cae.weight_low_value2);
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_2planes, 7, cae.weight_high_value2);
 	
 	clFlush(opencl_queue);
 }
@@ -1047,14 +1071,8 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 	delete[] tmpplanes.per_scb.weight_mode;
 	delete[] tmpplanes.per_scb.partition_format_specifiers;
 	delete[] tmpplanes.scb_stat;
-	delete[] tmpplanes.weight_high_value2;
-	delete[] tmpplanes.weight_high_value1;
-	delete[] tmpplanes.weight_low_value2;
-	delete[] tmpplanes.weight_low_value1;
 	delete[] tmpplanes.u8_quantized_decimated_quantized_weights;
 	delete[] tmpplanes.flt_quantized_decimated_quantized_weights;
-	delete[] tmpplanes.decimated_weights;
-	delete[] tmpplanes.decimated_quantized_weights;
 	delete[] tmpplanes.per_scb.ep;
 	delete[] tmpplanes.eix2;
 	delete[] tmpplanes.eix1;
@@ -1068,13 +1086,85 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 	delete[] scb_candidates;
 
 	OCL_RELEASE_OBJECT(Kernel, fbp.find_best_partitionings);
+	OCL_RELEASE_OBJECT(Kernel, cae.compute_angular_endpoints_1plane);
+	OCL_RELEASE_OBJECT(Kernel, cae.compute_angular_endpoints_2planes);
 	for (size_t pcount = 4; pcount >= 2; pcount--)
 	{
 		OCL_RELEASE_OBJECT(MemObject, fbp.ptab[pcount]);
 	}
 	OCL_RELEASE_OBJECT(MemObject, blk_buf);
+	OCL_RELEASE_OBJECT(MemObject, cae.bsd_1plane);
+	OCL_RELEASE_OBJECT(MemObject, cae.bsd_2planes);
 
 	OCL_RELEASE_OBJECT(CommandQueue, opencl_queue);
+}
+
+void SymbolicBatchCompressor::compute_angular_endpoints_1plane_batch_ocl()
+{
+	cl_int status;
+
+	cae.decimated_quantized_weights.write_to_device();
+	cae.decimated_weights.write_to_device();
+	blk_stat.write_to_device();
+
+	constexpr size_t wgsize = 64;
+	size_t mod = batch_size % wgsize;
+	size_t offset[] = { 0 };
+	size_t gsize[] = { batch_size - mod };
+	size_t lsize[] = { wgsize };
+
+	status = clEnqueueNDRangeKernel(opencl_queue, cae.compute_angular_endpoints_1plane, 1, NULL, gsize, lsize, 0, NULL, NULL);
+	OCL_CHECK_STATUS("Unable to enqueue cae1 kernel");
+
+	if (mod)
+	{
+		offset[0] = gsize[0];
+		gsize[0] = mod;
+		lsize[0] = mod;
+		status = clEnqueueNDRangeKernel(opencl_queue, cae.compute_angular_endpoints_1plane, 1, offset, gsize, lsize, 0, NULL, NULL);
+		OCL_CHECK_STATUS("Unable to enqueue cae1 kernel");
+	}
+
+	cae.weight_high_value1.read_from_device();
+	cae.weight_low_value1.read_from_device();
+
+	status = clFinish(opencl_queue);
+	OCL_CHECK_STATUS("Error in clFinish (cae1 kernel)");
+}
+
+void SymbolicBatchCompressor::compute_angular_endpoints_2planes_batch_ocl()
+{
+	cl_int status;
+
+	cae.decimated_quantized_weights.write_to_device();
+	cae.decimated_weights.write_to_device();
+	blk_stat.write_to_device();
+
+	constexpr size_t wgsize = 64;
+	size_t mod = batch_size % wgsize;
+	size_t offset[] = { 0 };
+	size_t gsize[] = { batch_size - mod };
+	size_t lsize[] = { wgsize };
+
+	status = clEnqueueNDRangeKernel(opencl_queue, cae.compute_angular_endpoints_2planes, 1, NULL, gsize, lsize, 0, NULL, NULL);
+	OCL_CHECK_STATUS("Unable to enqueue cae2 kernel");
+
+	if (mod)
+	{
+		offset[0] = gsize[0];
+		gsize[0] = mod;
+		lsize[0] = mod;
+		status = clEnqueueNDRangeKernel(opencl_queue, cae.compute_angular_endpoints_2planes, 1, offset, gsize, lsize, 0, NULL, NULL);
+		OCL_CHECK_STATUS("Unable to enqueue cae2 kernel");
+	}
+
+	cae.weight_high_value1.read_from_device();
+	cae.weight_high_value2.read_from_device();
+	cae.weight_low_value1.read_from_device();
+	cae.weight_low_value2.read_from_device();
+
+	status = clFinish(opencl_queue);
+	OCL_CHECK_STATUS("Error in clFinish (cae2 kernel)");
 }
 
 void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
@@ -1090,19 +1180,20 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 	partition_indices_1plane_batch.create_buffer(CL_MEM_WRITE_ONLY, PARTITION_CANDIDATES * max_blocks, opencl_queue);
 	partition_indices_2planes_batch.create_buffer(CL_MEM_WRITE_ONLY, PARTITION_CANDIDATES * max_blocks, opencl_queue);
 
+	cae.decimated_quantized_weights.create_buffer(CL_MEM_READ_ONLY, MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks, opencl_queue);
+	cae.decimated_weights.create_buffer(CL_MEM_READ_ONLY, MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks, opencl_queue);
+	cae.weight_low_value1.create_buffer(CL_MEM_WRITE_ONLY, MAX_SORTED_WEIGHT_MODES * max_blocks, opencl_queue);
+	cae.weight_low_value2.create_buffer(CL_MEM_WRITE_ONLY, MAX_SORTED_WEIGHT_MODES * max_blocks, opencl_queue);
+	cae.weight_high_value1.create_buffer(CL_MEM_WRITE_ONLY, MAX_SORTED_WEIGHT_MODES * max_blocks, opencl_queue);
+	cae.weight_high_value2.create_buffer(CL_MEM_WRITE_ONLY, MAX_SORTED_WEIGHT_MODES * max_blocks, opencl_queue);
+
 	tmpplanes.ei1 = new endpoints_and_weights[max_blocks];
 	tmpplanes.ei2 = new endpoints_and_weights[max_blocks];
 	tmpplanes.eix1 = new endpoints_and_weights[MAX_DECIMATION_MODES * max_blocks];
 	tmpplanes.eix2 = new endpoints_and_weights[MAX_DECIMATION_MODES * max_blocks];
 	tmpplanes.per_scb.ep = new endpoints[SCB_CANDIDATES * max_blocks];
-	tmpplanes.decimated_quantized_weights = new float[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks];
-	tmpplanes.decimated_weights = new float[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks];
 	tmpplanes.flt_quantized_decimated_quantized_weights = new float[MAX_SORTED_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks];
 	tmpplanes.u8_quantized_decimated_quantized_weights = new uint8_t[MAX_SORTED_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * max_blocks];
-	tmpplanes.weight_low_value1 = new float[MAX_SORTED_WEIGHT_MODES * max_blocks];
-	tmpplanes.weight_low_value2 = new float[MAX_SORTED_WEIGHT_MODES * max_blocks];
-	tmpplanes.weight_high_value1 = new float[MAX_SORTED_WEIGHT_MODES * max_blocks];
-	tmpplanes.weight_high_value2 = new float[MAX_SORTED_WEIGHT_MODES * max_blocks];
 	tmpplanes.scb_stat = new uint8_t[max_blocks];
 	tmpplanes.per_scb.partition_format_specifiers = new int[SCB_CANDIDATES * MAX_PARTITIONS * max_blocks];
 	tmpplanes.per_scb.weight_mode = new int[SCB_CANDIDATES * max_blocks];
@@ -1139,8 +1230,8 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 		const error_weight_block *ewb = &ewb_batch[blk_idx];
 		endpoints_and_weights *ei = &tmpplanes.ei1[blk_idx];
 		endpoints_and_weights *eix = &tmpplanes.eix1[MAX_DECIMATION_MODES * blk_idx];
-		float *decimated_quantized_weights = &tmpplanes.decimated_quantized_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		float *decimated_weights = &tmpplanes.decimated_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+		float *decimated_quantized_weights = &cae.decimated_quantized_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+		float *decimated_weights = &cae.decimated_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
 
 		int partition_index = 0;
 		if (partition_count > 1)
@@ -1167,18 +1258,20 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 
 
 	// for each mode, use the angular method to compute a shift.
+	//compute_angular_endpoints_1plane_batch_ocl();
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 	{
 		if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
 			continue;
 
-		const float *decimated_quantized_weights = &tmpplanes.decimated_quantized_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		const float *decimated_weights = &tmpplanes.decimated_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		float *weight_low_value = &tmpplanes.weight_low_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
-		float *weight_high_value = &tmpplanes.weight_high_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		const float *decimated_quantized_weights = &cae.decimated_quantized_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+		const float *decimated_weights = &cae.decimated_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+		float *weight_low_value = &cae.weight_low_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		float *weight_high_value = &cae.weight_high_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
 
 		compute_angular_endpoints_1plane(&ewp, sorted_bsd, decimated_quantized_weights, decimated_weights, weight_low_value, weight_high_value);
 	}
+	
 
 	memset(tmpplanes.scb_stat, 0, sizeof(uint8_t) * batch_size);
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
@@ -1194,11 +1287,11 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 		symbolic_compressed_block *scb = &scb_candidates[SCB_CANDIDATES * blk_idx];
 		const endpoints_and_weights *ei = &tmpplanes.ei1[blk_idx];
 		endpoints_and_weights *eix = &tmpplanes.eix1[MAX_DECIMATION_MODES * blk_idx];
-		const float *decimated_quantized_weights = &tmpplanes.decimated_quantized_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+		const float *decimated_quantized_weights = &cae.decimated_quantized_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
 		float *flt_quantized_decimated_quantized_weights = &tmpplanes.flt_quantized_decimated_quantized_weights[MAX_SORTED_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
 		uint8_t *u8_quantized_decimated_quantized_weights = &tmpplanes.u8_quantized_decimated_quantized_weights[MAX_SORTED_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		const float *weight_low_value = &tmpplanes.weight_low_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
-		float *weight_high_value = &tmpplanes.weight_high_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		const float *weight_low_value = &cae.weight_low_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		float *weight_high_value = &cae.weight_high_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
 
 		int partition_index = 0;
 		if (partition_count > 1)
@@ -1467,8 +1560,8 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 		endpoints_and_weights *ei2 = &tmpplanes.ei2[blk_idx];
 		endpoints_and_weights *eix1 = &tmpplanes.eix1[MAX_DECIMATION_MODES * blk_idx];
 		endpoints_and_weights *eix2 = &tmpplanes.eix2[MAX_DECIMATION_MODES * blk_idx];
-		float *decimated_quantized_weights = &tmpplanes.decimated_quantized_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		float *decimated_weights = &tmpplanes.decimated_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+		float *decimated_quantized_weights = &cae.decimated_quantized_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+		float *decimated_weights = &cae.decimated_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
 
 		int partition_index = 0;
 		if (partition_count > 1)
@@ -1497,17 +1590,18 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 
 
 	// for each mode, use the angular method to compute a shift.
+	//compute_angular_endpoints_2planes_batch_ocl();
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 	{
 		if (blk_stat[blk_idx] & skip_mode)
 			continue;
 
-		const float *decimated_quantized_weights = &tmpplanes.decimated_quantized_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		const float *decimated_weights = &tmpplanes.decimated_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		float *weight_low_value1 = &tmpplanes.weight_low_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
-		float *weight_low_value2 = &tmpplanes.weight_low_value2[MAX_SORTED_WEIGHT_MODES * blk_idx];
-		float *weight_high_value1 = &tmpplanes.weight_high_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
-		float *weight_high_value2 = &tmpplanes.weight_high_value2[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		const float *decimated_quantized_weights = &cae.decimated_quantized_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+		const float *decimated_weights = &cae.decimated_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+		float *weight_low_value1 = &cae.weight_low_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		float *weight_low_value2 = &cae.weight_low_value2[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		float *weight_high_value1 = &cae.weight_high_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		float *weight_high_value2 = &cae.weight_high_value2[MAX_SORTED_WEIGHT_MODES * blk_idx];
 
 		compute_angular_endpoints_2planes(&ewp, sorted_bsd, decimated_quantized_weights, decimated_weights, weight_low_value1, weight_high_value1, weight_low_value2, weight_high_value2);
 	}
@@ -1529,13 +1623,13 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 		const endpoints_and_weights *ei2 = &tmpplanes.ei2[blk_idx];
 		endpoints_and_weights *eix1 = &tmpplanes.eix1[MAX_DECIMATION_MODES * blk_idx];
 		endpoints_and_weights *eix2 = &tmpplanes.eix2[MAX_DECIMATION_MODES * blk_idx];
-		const float *decimated_quantized_weights = &tmpplanes.decimated_quantized_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
+		const float *decimated_quantized_weights = &cae.decimated_quantized_weights[MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
 		float *flt_quantized_decimated_quantized_weights = &tmpplanes.flt_quantized_decimated_quantized_weights[MAX_SORTED_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
 		uint8_t *u8_quantized_decimated_quantized_weights = &tmpplanes.u8_quantized_decimated_quantized_weights[MAX_SORTED_WEIGHT_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx];
-		const float *weight_low_value1 = &tmpplanes.weight_low_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
-		const float *weight_low_value2 = &tmpplanes.weight_low_value2[MAX_SORTED_WEIGHT_MODES * blk_idx];
-		float *weight_high_value1 = &tmpplanes.weight_high_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
-		float *weight_high_value2 = &tmpplanes.weight_high_value2[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		const float *weight_low_value1 = &cae.weight_low_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		const float *weight_low_value2 = &cae.weight_low_value2[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		float *weight_high_value1 = &cae.weight_high_value1[MAX_SORTED_WEIGHT_MODES * blk_idx];
+		float *weight_high_value2 = &cae.weight_high_value2[MAX_SORTED_WEIGHT_MODES * blk_idx];
 
 		int partition_index = 0;
 		if (partition_count > 1)

@@ -466,7 +466,7 @@ void compute_angular_endpoints_for_quantization_levels(int samplecount, global c
 // for a given set of weights and a given block size descriptors
 
 __kernel
-void compute_angular_endpoints_1plane(global const error_weighting_params* ewp, global const block_size_descriptor_sorted * bsds,
+void compute_angular_endpoints_1plane(global const uint8_t *blk_stat, global const block_size_descriptor_sorted * bsds,
 									  global const float *decimated_quantized_weights, global const float *decimated_weights,
 									  global float low_value[MAX_SORTED_WEIGHT_MODES], global float high_value[MAX_SORTED_WEIGHT_MODES])
 {
@@ -474,7 +474,7 @@ void compute_angular_endpoints_1plane(global const error_weighting_params* ewp, 
 	float low_values[MAX_DECIMATION_MODES][12];
 	float high_values[MAX_DECIMATION_MODES][12];
 
-	for (i = 0; i < ewp->decimation_mode_limit_1plane; i++)
+	for (i = 0; i < DLIMIT_1PLANE; i++) // DLIMIT_1PLANE = ewp->decimation_mode_limit_1plane
 	{
 		int samplecount = bsds->decimation_mode_samples[i];
 		int quant_mode = bsds->decimation_mode_maxprec[i];
@@ -484,7 +484,7 @@ void compute_angular_endpoints_1plane(global const error_weighting_params* ewp, 
 														  decimated_weights + i * MAX_WEIGHTS_PER_BLOCK, quant_mode, low_values[i], high_values[i]);
 	}
 
-	for (i = 0; i < ewp->weight_mode_limit_1plane; i++)
+	for (i = 0; i < WLIMIT_1PLANE; i++) // WLIMIT_1PLANE = ewp->weight_mode_limit_1plane
 	{
 		int quant_mode = bsds->block_modes[i].quantization_mode;
 		int decim_mode = bsds->block_modes[i].sorted_decimation_mode;
@@ -497,8 +497,7 @@ void compute_angular_endpoints_1plane(global const error_weighting_params* ewp, 
 
 
 __kernel
-void compute_angular_endpoints_2planes(global const error_weighting_params* ewp,
-									   global const block_size_descriptor_sorted * bsds,
+void compute_angular_endpoints_2planes(global const uint8_t *blk_stat, global const block_size_descriptor_sorted * bsds,
 									   global const float *decimated_quantized_weights,
 									   global const float *decimated_weights,
 									   global float low_value1[MAX_SORTED_WEIGHT_MODES], global float high_value1[MAX_SORTED_WEIGHT_MODES], global float low_value2[MAX_SORTED_WEIGHT_MODES], global float high_value2[MAX_SORTED_WEIGHT_MODES])
@@ -509,7 +508,7 @@ void compute_angular_endpoints_2planes(global const error_weighting_params* ewp,
 	float low_values2[MAX_DECIMATION_MODES][12];
 	float high_values2[MAX_DECIMATION_MODES][12];
 
-	for (i = 0; i < ewp->decimation_mode_limit_2planes; i++)
+	for (i = 0; i < DLIMIT_2PLANES; i++) // DLIMIT_2PLANES = ewp->decimation_mode_limit_2planes
 	{
 		int samplecount = bsds->decimation_mode_samples[i];
 		int quant_mode = bsds->decimation_mode_maxprec[i];
@@ -524,7 +523,7 @@ void compute_angular_endpoints_2planes(global const error_weighting_params* ewp,
 
 	}
 
-	for (i = 0; i < ewp->weight_mode_limit_2planes; i++)
+	for (i = 0; i < WLIMIT_2PLANES; i++) // WLIMIT_2PLANES = ewp->weight_mode_limit_2planes
 	{
 		int quant_mode = bsds->block_modes[i].quantization_mode;
 		int decim_mode = bsds->block_modes[i].sorted_decimation_mode;

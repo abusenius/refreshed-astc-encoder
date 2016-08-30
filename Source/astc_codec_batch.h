@@ -12,14 +12,8 @@ struct compress_fixed_partition_buffers
 	endpoints_and_weights* ei2;
 	endpoints_and_weights* eix1;
 	endpoints_and_weights* eix2;
-	float *decimated_quantized_weights;
-	float *decimated_weights;
 	float *flt_quantized_decimated_quantized_weights;
 	uint8_t *u8_quantized_decimated_quantized_weights;
-	float *weight_low_value1;
-	float *weight_low_value2;
-	float *weight_high_value1;
-	float *weight_high_value2;
 	uint8_t *scb_stat;
 	struct
 	{
@@ -43,6 +37,20 @@ struct find_best_partitionings_buffers
 
 	float weight_imprecision_estim_squared;
 	uint16_t partition_search_limits[5];
+};
+
+struct compute_angular_endpoints_buffers
+{
+	cl_kernel compute_angular_endpoints_1plane;
+	cl_kernel compute_angular_endpoints_2planes;
+	cl_mem bsd_1plane;
+	cl_mem bsd_2planes;
+	ocl_buffer<float, ocl_buffer_type::DEVICE> decimated_quantized_weights;
+	ocl_buffer<float, ocl_buffer_type::DEVICE> decimated_weights;
+	ocl_buffer<float, ocl_buffer_type::DEVICE> weight_low_value1;
+	ocl_buffer<float, ocl_buffer_type::DEVICE> weight_low_value2;
+	ocl_buffer<float, ocl_buffer_type::DEVICE> weight_high_value1;
+	ocl_buffer<float, ocl_buffer_type::DEVICE> weight_high_value2;
 };
 
 
@@ -78,10 +86,13 @@ private:
 
 	//ocl_buffer<int4, ocl_buffer_type::DEVICE> idebug;
 	//ocl_buffer<float4, ocl_buffer_type::DEVICE> fdebug;
+	void compute_angular_endpoints_1plane_batch_ocl();
+	void compute_angular_endpoints_2planes_batch_ocl();
 
 	// buffers used in compress_symbolic_batch_fixed_partition_*()
 	compress_fixed_partition_buffers tmpplanes;
 	find_best_partitionings_buffers fbp;
+	compute_angular_endpoints_buffers cae;
 
 	void allocate_buffers(int max_blocks);
 	void compress_symbolic_batch_fixed_partition_1_plane(int partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates);
