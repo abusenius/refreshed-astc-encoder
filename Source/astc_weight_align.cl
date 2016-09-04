@@ -474,14 +474,14 @@ void compute_angular_endpoints_1plane(global const uint8_t *blk_stat, global con
 	if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
 		return;
 	
-	global const float* decimated_quantized_weights = g_decimated_quantized_weights + MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx;
-	global const float* decimated_weights = g_decimated_weights + MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx;
+	global const float* decimated_quantized_weights = g_decimated_quantized_weights + DLIMIT_1PLANE * MAX_WEIGHTS_PER_BLOCK * blk_idx;
+	global const float* decimated_weights = g_decimated_weights + DLIMIT_1PLANE * MAX_WEIGHTS_PER_BLOCK * blk_idx;
 	global float* low_value = g_low_value + MAX_SORTED_WEIGHT_MODES * blk_idx;
 	global float* high_value = g_high_value + MAX_SORTED_WEIGHT_MODES * blk_idx;
 
 	int i;
-	float low_values[MAX_DECIMATION_MODES][12];
-	float high_values[MAX_DECIMATION_MODES][12];
+	float low_values[DLIMIT_1PLANE][12];
+	float high_values[DLIMIT_1PLANE][12];
 
 	for (i = 0; i < DLIMIT_1PLANE; i++) // DLIMIT_1PLANE = ewp->decimation_mode_limit_1plane
 	{
@@ -515,18 +515,18 @@ void compute_angular_endpoints_2planes(global const uint8_t *blk_stat, global co
 	if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
 		return;
 
-	global const float* decimated_quantized_weights = g_decimated_quantized_weights + MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx;
-	global const float* decimated_weights = g_decimated_weights + MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx;
+	global const float* decimated_quantized_weights = g_decimated_quantized_weights + DLIMIT_2PLANES * MAX_WEIGHTS_PER_BLOCK * blk_idx;
+	global const float* decimated_weights = g_decimated_weights + DLIMIT_2PLANES * MAX_WEIGHTS_PER_BLOCK * blk_idx;
 	global float* low_value1 = g_low_value1 + MAX_SORTED_WEIGHT_MODES * blk_idx;
 	global float* low_value2 = g_low_value2 + MAX_SORTED_WEIGHT_MODES * blk_idx;
 	global float* high_value1 = g_high_value1 + MAX_SORTED_WEIGHT_MODES * blk_idx;
 	global float* high_value2 = g_high_value2 + MAX_SORTED_WEIGHT_MODES * blk_idx;
 
 	int i;
-	float low_values1[MAX_DECIMATION_MODES][12];
-	float high_values1[MAX_DECIMATION_MODES][12];
-	float low_values2[MAX_DECIMATION_MODES][12];
-	float high_values2[MAX_DECIMATION_MODES][12];
+	float low_values1[DLIMIT_2PLANES][12];
+	float high_values1[DLIMIT_2PLANES][12];
+	float low_values2[DLIMIT_2PLANES][12];
+	float high_values2[DLIMIT_2PLANES][12];
 
 	for (i = 0; i < DLIMIT_2PLANES; i++) // DLIMIT_2PLANES = ewp->decimation_mode_limit_2planes
 	{

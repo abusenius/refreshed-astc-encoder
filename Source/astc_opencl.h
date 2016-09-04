@@ -69,8 +69,8 @@ public:
 	T * host_ptr;
 
 	void create_buffer(cl_mem_flags mem_flags, size_t count, cl_command_queue _opencl_queue);
-	void write_to_device();
-	void read_from_device();
+	void write_to_device(size_t count = 0);
+	void read_from_device(size_t count = 0);
 	T& operator[](size_t idx) { return host_ptr[idx]; };
 	const T& operator[](size_t idx) const { return host_ptr[idx]; };
 
@@ -116,20 +116,22 @@ inline void ocl_buffer<T, BUF_TYPE>::create_buffer(cl_mem_flags mem_flags, size_
 
 
 template<typename T, ocl_buffer_type BUF_TYPE>
-inline void ocl_buffer<T, BUF_TYPE>::write_to_device()
+inline void ocl_buffer<T, BUF_TYPE>::write_to_device(size_t count = 0)
 {
 	cl_int status;
+
+	size_t write_size = count ? (count * sizeof(T)) : size;
 
 	switch (BUF_TYPE)
 	{
 	case ocl_buffer_type::DEVICE:
-		OCL_WRITE_BUFFER(dev_buf, size, host_ptr);
+		OCL_WRITE_BUFFER(dev_buf, write_size, host_ptr);
 		break;
 	case ocl_buffer_type::DEVICE_PREPINNED:
 		OCL_UNMAP_BUFFER(dev_buf, host_ptr);
 		break;
 	case ocl_buffer_type::PINNED_PAIR:
-		OCL_WRITE_BUFFER(dev_buf, size, host_ptr);
+		OCL_WRITE_BUFFER(dev_buf, write_size, host_ptr);
 		break;
 	default:
 		ASTC_CODEC_INTERNAL_ERROR;
@@ -138,20 +140,21 @@ inline void ocl_buffer<T, BUF_TYPE>::write_to_device()
 }
 
 template<typename T, ocl_buffer_type BUF_TYPE>
-inline void ocl_buffer<T, BUF_TYPE>::read_from_device()
+inline void ocl_buffer<T, BUF_TYPE>::read_from_device(size_t count = 0)
 {
 	cl_int status;
+	size_t read_size = count ? (count * sizeof(T)) : size;
 
 	switch (BUF_TYPE)
 	{
 	case ocl_buffer_type::DEVICE:
-		OCL_READ_BUFFER(dev_buf, size, host_ptr);
+		OCL_READ_BUFFER(dev_buf, read_size, host_ptr);
 		break;
 	case ocl_buffer_type::DEVICE_PREPINNED:
 		OCL_MAP_BUFFER(dev_buf, T*, host_ptr, CL_MAP_READ | CL_MAP_WRITE, size);
 		break;
 	case ocl_buffer_type::PINNED_PAIR:
-		OCL_WRITE_BUFFER(dev_buf, size, host_ptr);
+		OCL_WRITE_BUFFER(dev_buf, read_size, host_ptr);
 		break;
 	default:
 		ASTC_CODEC_INTERNAL_ERROR;
