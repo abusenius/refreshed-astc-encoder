@@ -465,10 +465,10 @@ void compute_angular_endpoints_for_quantization_levels(int samplecount, global c
 // helper functions that will compute ideal angular-endpoints
 // for a given set of weights and a given block size descriptors
 
-__kernel
+__kernel __attribute__((reqd_work_group_size(64, 1, 1)))
 void compute_angular_endpoints_1plane(global const uint8_t *blk_stat, global const block_size_descriptor_sorted * bsds,
 									  global const float *g_decimated_quantized_weights, global const float *g_decimated_weights,
-									  global float g_low_value[MAX_SORTED_WEIGHT_MODES], global float g_high_value[MAX_SORTED_WEIGHT_MODES])
+									  global float g_low_value[WLIMIT_1PLANE], global float g_high_value[WLIMIT_1PLANE])
 {
 	uint blk_idx = get_global_id(0);
 	if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
@@ -476,8 +476,8 @@ void compute_angular_endpoints_1plane(global const uint8_t *blk_stat, global con
 	
 	global const float* decimated_quantized_weights = g_decimated_quantized_weights + DLIMIT_1PLANE * MAX_WEIGHTS_PER_BLOCK * blk_idx;
 	global const float* decimated_weights = g_decimated_weights + DLIMIT_1PLANE * MAX_WEIGHTS_PER_BLOCK * blk_idx;
-	global float* low_value = g_low_value + MAX_SORTED_WEIGHT_MODES * blk_idx;
-	global float* high_value = g_high_value + MAX_SORTED_WEIGHT_MODES * blk_idx;
+	global float* low_value = g_low_value + WLIMIT_1PLANE * blk_idx;
+	global float* high_value = g_high_value + WLIMIT_1PLANE * blk_idx;
 
 	int i;
 	float low_values[DLIMIT_1PLANE][12];
@@ -505,11 +505,11 @@ void compute_angular_endpoints_1plane(global const uint8_t *blk_stat, global con
 }
 
 
-__kernel
+__kernel __attribute__((reqd_work_group_size(64, 1, 1)))
 void compute_angular_endpoints_2planes(global const uint8_t *blk_stat, global const block_size_descriptor_sorted * bsds,
 									   global const float *g_decimated_quantized_weights,
 									   global const float *g_decimated_weights,
-									   global float g_low_value1[MAX_SORTED_WEIGHT_MODES], global float g_high_value1[MAX_SORTED_WEIGHT_MODES], global float g_low_value2[MAX_SORTED_WEIGHT_MODES], global float g_high_value2[MAX_SORTED_WEIGHT_MODES])
+									   global float g_low_value1[WLIMIT_2PLANES], global float g_high_value1[WLIMIT_2PLANES], global float g_low_value2[WLIMIT_2PLANES], global float g_high_value2[WLIMIT_2PLANES])
 {
 	uint blk_idx = get_global_id(0);
 	if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
@@ -517,10 +517,10 @@ void compute_angular_endpoints_2planes(global const uint8_t *blk_stat, global co
 
 	global const float* decimated_quantized_weights = g_decimated_quantized_weights + DLIMIT_2PLANES * MAX_WEIGHTS_PER_BLOCK * blk_idx;
 	global const float* decimated_weights = g_decimated_weights + DLIMIT_2PLANES * MAX_WEIGHTS_PER_BLOCK * blk_idx;
-	global float* low_value1 = g_low_value1 + MAX_SORTED_WEIGHT_MODES * blk_idx;
-	global float* low_value2 = g_low_value2 + MAX_SORTED_WEIGHT_MODES * blk_idx;
-	global float* high_value1 = g_high_value1 + MAX_SORTED_WEIGHT_MODES * blk_idx;
-	global float* high_value2 = g_high_value2 + MAX_SORTED_WEIGHT_MODES * blk_idx;
+	global float* low_value1 = g_low_value1 + WLIMIT_2PLANES * blk_idx;
+	global float* low_value2 = g_low_value2 + WLIMIT_2PLANES * blk_idx;
+	global float* high_value1 = g_high_value1 + WLIMIT_2PLANES * blk_idx;
+	global float* high_value2 = g_high_value2 + WLIMIT_2PLANES * blk_idx;
 
 	int i;
 	float low_values1[DLIMIT_2PLANES][12];
