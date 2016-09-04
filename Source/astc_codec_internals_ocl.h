@@ -26,6 +26,9 @@
 	#define __global
 	#define __local
 	#define __kernel
+	#define global
+	#define local
+	#define kernel
 	#define constant
     #define get_global_id(i) i
 	#define sqrt(i) i

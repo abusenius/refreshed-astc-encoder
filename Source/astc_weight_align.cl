@@ -467,9 +467,18 @@ void compute_angular_endpoints_for_quantization_levels(int samplecount, global c
 
 __kernel
 void compute_angular_endpoints_1plane(global const uint8_t *blk_stat, global const block_size_descriptor_sorted * bsds,
-									  global const float *decimated_quantized_weights, global const float *decimated_weights,
-									  global float low_value[MAX_SORTED_WEIGHT_MODES], global float high_value[MAX_SORTED_WEIGHT_MODES])
+									  global const float *g_decimated_quantized_weights, global const float *g_decimated_weights,
+									  global float g_low_value[MAX_SORTED_WEIGHT_MODES], global float g_high_value[MAX_SORTED_WEIGHT_MODES])
 {
+	uint blk_idx = get_global_id(0);
+	if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
+		return;
+	
+	global const float* decimated_quantized_weights = g_decimated_quantized_weights + MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx;
+	global const float* decimated_weights = g_decimated_weights + MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx;
+	global float* low_value = g_low_value + MAX_SORTED_WEIGHT_MODES * blk_idx;
+	global float* high_value = g_high_value + MAX_SORTED_WEIGHT_MODES * blk_idx;
+
 	int i;
 	float low_values[MAX_DECIMATION_MODES][12];
 	float high_values[MAX_DECIMATION_MODES][12];
@@ -498,10 +507,21 @@ void compute_angular_endpoints_1plane(global const uint8_t *blk_stat, global con
 
 __kernel
 void compute_angular_endpoints_2planes(global const uint8_t *blk_stat, global const block_size_descriptor_sorted * bsds,
-									   global const float *decimated_quantized_weights,
-									   global const float *decimated_weights,
-									   global float low_value1[MAX_SORTED_WEIGHT_MODES], global float high_value1[MAX_SORTED_WEIGHT_MODES], global float low_value2[MAX_SORTED_WEIGHT_MODES], global float high_value2[MAX_SORTED_WEIGHT_MODES])
+									   global const float *g_decimated_quantized_weights,
+									   global const float *g_decimated_weights,
+									   global float g_low_value1[MAX_SORTED_WEIGHT_MODES], global float g_high_value1[MAX_SORTED_WEIGHT_MODES], global float g_low_value2[MAX_SORTED_WEIGHT_MODES], global float g_high_value2[MAX_SORTED_WEIGHT_MODES])
 {
+	uint blk_idx = get_global_id(0);
+	if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
+		return;
+
+	global const float* decimated_quantized_weights = g_decimated_quantized_weights + MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx;
+	global const float* decimated_weights = g_decimated_weights + MAX_DECIMATION_MODES * MAX_WEIGHTS_PER_BLOCK * blk_idx;
+	global float* low_value1 = g_low_value1 + MAX_SORTED_WEIGHT_MODES * blk_idx;
+	global float* low_value2 = g_low_value2 + MAX_SORTED_WEIGHT_MODES * blk_idx;
+	global float* high_value1 = g_high_value1 + MAX_SORTED_WEIGHT_MODES * blk_idx;
+	global float* high_value2 = g_high_value2 + MAX_SORTED_WEIGHT_MODES * blk_idx;
+
 	int i;
 	float low_values1[MAX_DECIMATION_MODES][12];
 	float high_values1[MAX_DECIMATION_MODES][12];
