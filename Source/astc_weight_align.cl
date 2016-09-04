@@ -132,6 +132,7 @@ void compute_angular_offsets(int samplecount, global const float *samples, globa
 	// compute the angle-sums.
 	for (i = 0; i < samplecount; i++)
 	{
+#ifdef MIMIC_HOST
 		float sample = samples[i];
 		float sample_weight = sample_weights[i];
 		if32 p;
@@ -146,6 +147,20 @@ void compute_angular_offsets(int samplecount, global const float *samples, globa
 			anglesum_x[j] += cp * sample_weight;
 			anglesum_y[j] += sp * sample_weight;
 		}
+#else
+		float sample = samples[i];
+		float sample_weight = sample_weights[i];
+		
+		for (j = 0; j < max_angular_steps; j++)
+		{
+			float angle = (2.0f * M_PI ) * angular_steppings[j] * sample;
+			float cp = native_cos(angle);
+			float sp = native_sin(angle);
+
+			anglesum_x[j] += cp * sample_weight;
+			anglesum_y[j] += sp * sample_weight;
+		}
+#endif // MIMIC_HOST
 	}
 
 	// postprocess the angle-sums
@@ -183,24 +198,6 @@ void compute_lowest_and_highest_weight(int samplecount, global const float *samp
 
 	// weight + 12
 	const unsigned int idxtab[256] = {
-
-		12, 13, 14, 15, 16, 17, 18, 19,
-		20, 21, 22, 23, 24, 25, 26, 27,
-		28, 29, 30, 31, 32, 33, 34, 35,
-		36, 37, 38, 39, 40, 41, 42, 43,
-		44, 45, 46, 47, 48, 49, 50, 51,
-		52, 53, 54, 55, 55, 55, 55, 55,
-		55, 55, 55, 55, 55, 55, 55, 55,
-		55, 55, 55, 55, 55, 55, 55, 55,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 1, 2, 3,
-		4, 5, 6, 7, 8, 9, 10, 11,
-
 		12, 13, 14, 15, 16, 17, 18, 19,
 		20, 21, 22, 23, 24, 25, 26, 27,
 		28, 29, 30, 31, 32, 33, 34, 35,
@@ -234,46 +231,8 @@ void compute_lowest_and_highest_weight(int samplecount, global const float *samp
 		float scaled_offset = rcp_stepsize * offset;
 
 
-		for (i = 0; i < samplecount - 1; i += 2)
+		for (i = 0; i < samplecount; i++)
 		{
-			float wt1 = sample_weights[i];
-			float wt2 = sample_weights[i + 1];
-			if32 p1, p2;
-			float sval1 = (samples[i] * rcp_stepsize) - scaled_offset;
-			float sval2 = (samples[i + 1] * rcp_stepsize) - scaled_offset;
-			p1.f = sval1 + 12582912.0f;	// FP representation abuse to avoid floor() and float->int conversion
-			p2.f = sval2 + 12582912.0f;	// FP representation abuse to avoid floor() and float->int conversion
-			float isval1 = p1.f - 12582912.0f;
-			float isval2 = p2.f - 12582912.0f;
-			float dif1 = sval1 - isval1;
-			float dif2 = sval2 - isval2;
-
-			errval += (dif1 * wt1) * dif1;
-			errval += (dif2 * wt2) * dif2;
-
-			// table lookups that really perform a minmax function.
-			unsigned int idx1_bias12 = idxtab[p1.u & 0xFF];
-			unsigned int idx2_bias12 = idxtab[p2.u & 0xFF];
-
-			if (idx1_bias12 < minidx_bias12)
-				minidx_bias12 = idx1_bias12;
-			if (idx1_bias12 > maxidx_bias12)
-				maxidx_bias12 = idx1_bias12;
-			if (idx2_bias12 < minidx_bias12)
-				minidx_bias12 = idx2_bias12;
-			if (idx2_bias12 > maxidx_bias12)
-				maxidx_bias12 = idx2_bias12;
-
-			error_from_forcing_weight_either_way[idx1_bias12] += wt1;
-			error_from_forcing_weight_down[idx1_bias12] += (dif1 * wt1);
-
-			error_from_forcing_weight_either_way[idx2_bias12] += wt2;
-			error_from_forcing_weight_down[idx2_bias12] += (dif2 * wt2);
-		}
-
-		if (samplecount & 1)
-		{
-			i = samplecount - 1;
 			float wt = sample_weights[i];
 			if32 p;
 			float sval = (samples[i] * rcp_stepsize) - scaled_offset;
@@ -283,7 +242,7 @@ void compute_lowest_and_highest_weight(int samplecount, global const float *samp
 
 			errval += (dif * wt) * dif;
 
-			unsigned int idx_bias12 = idxtab[p.u & 0xFF];
+			unsigned int idx_bias12 = idxtab[p.u & 0x7F];
 
 			if (idx_bias12 < minidx_bias12)
 				minidx_bias12 = idx_bias12;
@@ -465,7 +424,7 @@ void compute_angular_endpoints_for_quantization_levels(int samplecount, global c
 // helper functions that will compute ideal angular-endpoints
 // for a given set of weights and a given block size descriptors
 
-__kernel __attribute__((reqd_work_group_size(64, 1, 1)))
+__kernel
 void compute_angular_endpoints_1plane(global const uint8_t *blk_stat, global const block_size_descriptor_sorted * bsds,
 									  global const float *g_decimated_quantized_weights, global const float *g_decimated_weights,
 									  global float g_low_value[WLIMIT_1PLANE], global float g_high_value[WLIMIT_1PLANE])
@@ -505,7 +464,7 @@ void compute_angular_endpoints_1plane(global const uint8_t *blk_stat, global con
 }
 
 
-__kernel __attribute__((reqd_work_group_size(64, 1, 1)))
+__kernel
 void compute_angular_endpoints_2planes(global const uint8_t *blk_stat, global const block_size_descriptor_sorted * bsds,
 									   global const float *g_decimated_quantized_weights,
 									   global const float *g_decimated_weights,

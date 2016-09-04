@@ -1125,8 +1125,8 @@ void SymbolicBatchCompressor::compute_angular_endpoints_1plane_batch_ocl()
 		OCL_CHECK_STATUS("Unable to enqueue cae1 kernel");
 	}
 
-	cae.weight_high_value1.read_from_device();
-	cae.weight_low_value1.read_from_device();
+	cae.weight_high_value1.read_from_device(ewp.weight_mode_limit_1plane * max_batch_size);
+	cae.weight_low_value1.read_from_device(ewp.weight_mode_limit_1plane * max_batch_size);
 
 	status = clFinish(opencl_queue);
 	OCL_CHECK_STATUS("Error in clFinish (cae1 kernel)");
@@ -1158,10 +1158,10 @@ void SymbolicBatchCompressor::compute_angular_endpoints_2planes_batch_ocl()
 		OCL_CHECK_STATUS("Unable to enqueue cae2 kernel");
 	}
 
-	cae.weight_high_value1.read_from_device();
-	cae.weight_high_value2.read_from_device();
-	cae.weight_low_value1.read_from_device();
-	cae.weight_low_value2.read_from_device();
+	cae.weight_high_value1.read_from_device(ewp.weight_mode_limit_2planes * max_batch_size);
+	cae.weight_high_value2.read_from_device(ewp.weight_mode_limit_2planes * max_batch_size);
+	cae.weight_low_value1.read_from_device(ewp.weight_mode_limit_2planes * max_batch_size);
+	cae.weight_low_value2.read_from_device(ewp.weight_mode_limit_2planes * max_batch_size);
 
 	status = clFinish(opencl_queue);
 	OCL_CHECK_STATUS("Error in clFinish (cae2 kernel)");
