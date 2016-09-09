@@ -358,9 +358,9 @@ void init_opencl(const opencl_options * oclo, int batch_size, int xdim, int ydim
 	char compilerOptions[4096];
 	setlocale(LC_NUMERIC, "C");
 	sprintf(compilerOptions, "%s -I %s -D XDIM=%i -D YDIM=%i -D ZDIM=%i -D TEXELS_PER_BLOCK=%i -D WEIGHT_IMPRECISION_ESTIM_SQUARED=%gf -D PLIMIT=%i"
-                              " -D DLIMIT_1PLANE=%i -D DLIMIT_2PLANES=%i -D WLIMIT_1PLANE=%i -D WLIMIT_2PLANES=%i %s",
+                              " -D DLIMIT_1PLANE=%i -D DLIMIT_2PLANES=%i -D WLIMIT_1PLANE=%i -D WLIMIT_2PLANES=%i -D BATCH_SIZE=%i %s",
 		OPENCL_COMPILER_OPTIONS, ".", xdim, ydim, zdim, texels_per_block, weight_imprecision_estim_squared, ewp->partition_search_limit,
-		ewp->decimation_mode_limit_1plane, ewp->decimation_mode_limit_2planes, ewp->weight_mode_limit_1plane, ewp->weight_mode_limit_2planes, compile_flags);
+		ewp->decimation_mode_limit_1plane, ewp->decimation_mode_limit_2planes, ewp->weight_mode_limit_1plane, ewp->weight_mode_limit_2planes, batch_size, compile_flags);
 	if (!silentmode)
 		printf("Batch size: %i\nOpenCL compiler options:\n%s\n\n", batch_size, compilerOptions);
 

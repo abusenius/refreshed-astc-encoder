@@ -885,6 +885,15 @@ int main(int argc, char **argv)
 {
 	int i;
 
+	//printf("i  p1  p2\n");
+	//for (int i = -8; i < 8; i++)
+	//{
+	//	int p1 = i / 3;
+	//	int p2 = i % 3;
+	//	printf("%+i %+i %+i\n", i, p1, p2);
+	//}
+	//exit(-1);
+
 	test_inappropriate_extended_precision();
 	// initialization routines
 	prepare_angular_tables();

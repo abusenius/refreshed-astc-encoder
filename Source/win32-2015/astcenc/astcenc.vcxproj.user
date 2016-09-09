@@ -11,12 +11,12 @@
     <LocalDebuggerWorkingDirectory>$(SolutionDir)..\..\</LocalDebuggerWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LocalDebuggerCommandArguments>-tl turret_diffuse_map.png test.astc 4x4 -time -showpsnr -medium</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-tl turret_diffuse_map.png test.astc 4x4 -time -showpsnr -medium -batchsize 2048</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
     <LocalDebuggerWorkingDirectory>$(SolutionDir)..\..\</LocalDebuggerWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LocalDebuggerCommandArguments>-tl turret_diffuse_map.png test.astc 4x4 -time -showpsnr -medium</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-tl turret_diffuse_map.png test.astc 4x4 -time -showpsnr -medium -batchsize 2048</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
     <LocalDebuggerWorkingDirectory>$(SolutionDir)..\..\</LocalDebuggerWorkingDirectory>
   </PropertyGroup>

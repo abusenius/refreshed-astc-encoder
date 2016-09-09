@@ -185,99 +185,69 @@ void compute_lowest_and_highest_weight(int samplecount, global const float *samp
 									  float *error, float *cut_low_weight_error, float *cut_high_weight_error)
 {
 	int i;
-
 	int sp;
-
-	float error_from_forcing_weight_down[60];
-	float error_from_forcing_weight_either_way[60];
-	for (i = 0; i < 60; i++)
-	{
-		error_from_forcing_weight_down[i] = 0;
-		error_from_forcing_weight_either_way[i] = 0;
-	}
-
-	// weight + 12
-	const unsigned int idxtab[256] = {
-		12, 13, 14, 15, 16, 17, 18, 19,
-		20, 21, 22, 23, 24, 25, 26, 27,
-		28, 29, 30, 31, 32, 33, 34, 35,
-		36, 37, 38, 39, 40, 41, 42, 43,
-		44, 45, 46, 47, 48, 49, 50, 51,
-		52, 53, 54, 55, 55, 55, 55, 55,
-		55, 55, 55, 55, 55, 55, 55, 55,
-		55, 55, 55, 55, 55, 55, 55, 55,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 1, 2, 3,
-		4, 5, 6, 7, 8, 9, 10, 11
-	};
-
-
 
 	for (sp = 0; sp < max_angular_steps; sp++)
 	{
-		unsigned int minidx_bias12 = 55;
-		unsigned int maxidx_bias12 = 0;
-
-		float errval = 0.0f;
-
 		float rcp_stepsize = angular_steppings[sp];
 		float offset = offsets[sp];
 
 		float scaled_offset = rcp_stepsize * offset;
 
 
-		for (i = 0; i < samplecount; i++)
+		float wt = sample_weights[0];
+		if32 p;
+		float sval = (samples[0] * rcp_stepsize) - scaled_offset;
+		p.f = sval + 12582912.0f;	// FP representation abuse to avoid floor() and float->int conversion. TODO: replace with float rounding
+		float isval = p.f - 12582912.0f;
+		float dif = sval - isval;
+
+		float errval = (dif * wt) * dif;
+
+		int sh = rint(sval);
+		int idx_bias12 = clamp(sh, -12, 43); // TODO: is clamp needed?
+
+		int minidx_bias12 = idx_bias12;
+		int maxidx_bias12 = idx_bias12;
+
+		float error_cut_low = (1.0f - 2.0f * dif) * wt;
+		float error_cut_high = (1.0f + 2.0f * dif) * wt;
+
+		for (i = 1; i < samplecount; i++)
 		{
 			float wt = sample_weights[i];
 			if32 p;
 			float sval = (samples[i] * rcp_stepsize) - scaled_offset;
-			p.f = sval + 12582912.0f;	// FP representation abuse to avoid floor() and float->int conversion
+			p.f = sval + 12582912.0f;	// FP representation abuse to avoid floor() and float->int conversion. TODO: replace with float rounding
 			float isval = p.f - 12582912.0f;
 			float dif = sval - isval;
 
 			errval += (dif * wt) * dif;
 
-			unsigned int idx_bias12 = idxtab[p.u & 0x7F];
+			int sh = rint(sval);
+			int idx_bias12 = clamp(sh, -12, 43); // TODO: is clamp needed?
 
-			if (idx_bias12 < minidx_bias12)
-				minidx_bias12 = idx_bias12;
-			if (idx_bias12 > maxidx_bias12)
-				maxidx_bias12 = idx_bias12;
+			//zeroing min/max errors if min/max index have changed
+			error_cut_low *= (idx_bias12 >= minidx_bias12);
+			error_cut_high *= (idx_bias12 <= maxidx_bias12);
 
-			error_from_forcing_weight_either_way[idx_bias12] += wt;
-			error_from_forcing_weight_down[idx_bias12] += dif * wt;
+			minidx_bias12 = min(minidx_bias12, idx_bias12);
+			maxidx_bias12 = max(maxidx_bias12, idx_bias12);
+
+			error_cut_low += (1.0f - 2.0f * dif) * wt * (idx_bias12 == minidx_bias12);
+			error_cut_high += (1.0f + 2.0f * dif) * wt * (idx_bias12 == maxidx_bias12);
 		}
 
 
-		lowest_weight[sp] = (int)minidx_bias12 - 12;
-		highest_weight[sp] = (int)maxidx_bias12 - 12;
+		lowest_weight[sp] = minidx_bias12;
+		highest_weight[sp] = maxidx_bias12;
 		error[sp] = errval;
 
 		// the cut_(lowest/highest)_weight_error indicate the error that results from
 		// forcing samples that should have had the (lowest/highest) weight value
 		// one step (up/down).
-		cut_low_weight_error[sp] = error_from_forcing_weight_either_way[minidx_bias12] - 2.0f * error_from_forcing_weight_down[minidx_bias12];
-		cut_high_weight_error[sp] = error_from_forcing_weight_either_way[maxidx_bias12] + 2.0f * error_from_forcing_weight_down[maxidx_bias12];
-
-		// clear out the error-from-forcing values we actually used in this pass
-		// so that these are clean for the next pass.
-		unsigned int ui;
-		for (ui = minidx_bias12 & ~0x3; ui <= maxidx_bias12; ui += 4)
-		{
-			error_from_forcing_weight_either_way[ui] = 0;
-			error_from_forcing_weight_down[ui] = 0;
-			error_from_forcing_weight_either_way[ui + 1] = 0;
-			error_from_forcing_weight_down[ui + 1] = 0;
-			error_from_forcing_weight_either_way[ui + 2] = 0;
-			error_from_forcing_weight_down[ui + 2] = 0;
-			error_from_forcing_weight_either_way[ui + 3] = 0;
-			error_from_forcing_weight_down[ui + 3] = 0;
-		}
+		cut_low_weight_error[sp] = error_cut_low;
+		cut_high_weight_error[sp] = error_cut_high;
 	}
 
 
@@ -312,13 +282,12 @@ void compute_angular_endpoints_for_quantization_levels(int samplecount, global c
 	compute_angular_offsets(samplecount, samples, sample_weights, max_angular_steps, offsets);
 
 
-	// the +4 offsets are to allow for vectorization within compute_lowest_and_highest_weight().
-	int8_t lowest_weight[ANGULAR_STEPS + 4];
-	int8_t highest_weight[ANGULAR_STEPS + 4];
-	float error[ANGULAR_STEPS + 4];
+	int8_t lowest_weight[ANGULAR_STEPS];
+	int8_t highest_weight[ANGULAR_STEPS];
+	float error[ANGULAR_STEPS];
 
-	float cut_low_weight_error[ANGULAR_STEPS + 4];
-	float cut_high_weight_error[ANGULAR_STEPS + 4];
+	float cut_low_weight_error[ANGULAR_STEPS];
+	float cut_high_weight_error[ANGULAR_STEPS];
 
 	compute_lowest_and_highest_weight(samplecount, samples, sample_weights, max_angular_steps, offsets, lowest_weight, highest_weight, error, cut_low_weight_error, cut_high_weight_error);
 
@@ -396,10 +365,10 @@ void compute_angular_endpoints_for_quantization_levels(int samplecount, global c
 
 	max_quantization_level--;	// Decrease level again (see corresponding ++, above)
 
-	const int ql_weights[12] = { 2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 33 };
+	//const int ql_weights[12] = { 2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 33 };
 	for (i = 0; i <= max_quantization_level; i++)
 	{
-		int q = ql_weights[i];
+		int q = quantization_steps_for_level[i];//ql_weights[i];
 		int bsi = best_scale[q];
 
 		// Did we find anything?
