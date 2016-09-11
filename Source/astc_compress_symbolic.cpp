@@ -1094,6 +1094,10 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 	OCL_RELEASE_OBJECT(Kernel, fbp.find_best_partitionings);
 	OCL_RELEASE_OBJECT(Kernel, cae.compute_angular_endpoints_1plane);
 	OCL_RELEASE_OBJECT(Kernel, cae.compute_angular_endpoints_2planes);
+	for (size_t i = 0; i < 3; i++)
+	{
+		OCL_RELEASE_OBJECT(MemObject, fbp.ptab_pseudo[i]);
+	}
 	for (size_t pcount = 4; pcount >= 2; pcount--)
 	{
 		OCL_RELEASE_OBJECT(MemObject, fbp.ptab[pcount]);
