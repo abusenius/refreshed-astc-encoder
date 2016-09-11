@@ -211,18 +211,18 @@ float calculate_weight_imprecision(int texels_per_block)
    main function to identify the best partitioning for a given number of texels */
 
 
-void SymbolicBatchCompressor::find_best_partitionings(int partition_search_limit, int partition_count,
+void SymbolicBatchCompressor::find_best_partitionings(int partition_search_limit, int partition_count, int empty_partition_count,
 							 const imageblock * pb, const error_weight_block * ewb,
 							 uint16_t *best_partitions_single_weight_plane, uint16_t *best_partitions_dual_weight_planes)
 {
 	int i, j;
 	uint16_t partition_sequence[PARTITION_COUNT];
 
-	kmeans_compute_partition_ordering(xdim, ydim, zdim, partition_count, pb, partition_sequence);
+	kmeans_compute_partition_ordering(xdim, ydim, zdim, partition_count, empty_partition_count, pb, partition_sequence);
 
 	int uses_alpha = imageblock_uses_alpha(xdim, ydim, zdim, pb);
 
-	const partition_info *ptab = get_partition_table(xdim, ydim, zdim, partition_count);
+	const partition_info *ptab = get_partition_table(xdim, ydim, zdim, partition_count, empty_partition_count);
 
 	// partitioning errors assuming uncorrellated-chrominance endpoints
 	float uncorr_errors[PARTITION_COUNT];
@@ -742,7 +742,7 @@ void SymbolicBatchCompressor::find_best_partitionings(int partition_search_limit
 }
 
 
-void SymbolicBatchCompressor::find_best_partitionings_batch(int partition_count, const imageblock * blk_batch)
+void SymbolicBatchCompressor::find_best_partitionings_batch(int partition_count, int empty_partition_count, const imageblock * blk_batch)
 {
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 	{
@@ -754,15 +754,22 @@ void SymbolicBatchCompressor::find_best_partitionings_batch(int partition_count,
 
 		uint16_t * partition_indices_1plane = &partition_indices_1plane_batch[0] + blk_idx * PARTITION_CANDIDATES;
 		uint16_t * partition_indices_2planes = &partition_indices_2planes_batch[0] + blk_idx * PARTITION_CANDIDATES;
-		find_best_partitionings(fbp.partition_search_limits[partition_count], partition_count, blk, ewb,
+		find_best_partitionings(fbp.partition_search_limits[partition_count], partition_count, 0, blk, ewb,
 			partition_indices_1plane, partition_indices_2planes);
 	}
 }
 
-void SymbolicBatchCompressor::find_best_partitionings_batch_ocl(int partition_count, const imageblock * blk_batch)
+void SymbolicBatchCompressor::find_best_partitionings_batch_ocl(int partition_count, int empty_partition_count, const imageblock * blk_batch)
 {
 	cl_int status;
-	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 6, fbp.ptab[partition_count]);
+	if (empty_partition_count == 0)
+	{
+		OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 6, fbp.ptab[partition_count]);
+	}
+	else
+	{
+		OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 6, fbp.ptab_pseudo[partition_count - empty_partition_count]);
+	}
 	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 7, fbp.partition_search_limits[partition_count]);
 	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 8, partition_count);
 
@@ -774,7 +781,7 @@ void SymbolicBatchCompressor::find_best_partitionings_batch_ocl(int partition_co
 		const imageblock * blk = &blk_batch[blk_idx];
 		uint16_t *partition_sequence = &fbp.partition_sequence[0] + PARTITION_COUNT * blk_idx;
 
-		kmeans_compute_partition_ordering(xdim, ydim, zdim, partition_count, blk, partition_sequence);
+		kmeans_compute_partition_ordering(xdim, ydim, zdim, partition_count, empty_partition_count, blk, partition_sequence);
 	}
 	fbp.partition_sequence.write_to_device();
 	blk_stat.write_to_device();

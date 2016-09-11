@@ -477,7 +477,7 @@ extern int quantization_mode_table[17][128];
 // **********************************************
 
 // function to get a pointer to a partition table or an array thereof.
-const partition_info *get_partition_table(int xdim, int ydim, int zdim, int partition_count);
+const partition_info *get_partition_table(int xdim, int ydim, int zdim, int partition_count, int empty_partition_count);
 
 // function to get a pointer to a table with unique partitionings count
 const partition_statistics *get_partition_stats(int xdim, int ydim, int zdim, int partition_count);
@@ -582,7 +582,7 @@ void find_best_partitionings(int partition_search_limit, int xdim, int ydim, int
 
 
 // use k-means clustering to compute a partition ordering for a block.
-void kmeans_compute_partition_ordering(int xdim, int ydim, int zdim, int partition_count, const imageblock * blk, uint16_t *ordering);
+void kmeans_compute_partition_ordering(int xdim, int ydim, int zdim, int partition_count, int empty_partition_count, const imageblock * blk, uint16_t *ordering);
 
 
 

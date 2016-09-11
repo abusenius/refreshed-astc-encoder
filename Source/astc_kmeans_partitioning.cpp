@@ -387,10 +387,10 @@ static inline int partition_mismatch4(uint64_t a0, uint64_t a1, uint64_t a2, uin
 
 
 
-void count_partition_mismatch_bits(int xdim, int ydim, int zdim, int partition_count, const uint64_t bitmaps[4], int bitcounts[PARTITION_COUNT])
+void count_partition_mismatch_bits(int xdim, int ydim, int zdim, int partition_count, int empty_partition_count, const uint64_t bitmaps[4], int bitcounts[PARTITION_COUNT])
 {
 	int i;
-	const partition_info *pi = get_partition_table(xdim, ydim, zdim, partition_count);
+	const partition_info *pi = get_partition_table(xdim, ydim, zdim, partition_count, empty_partition_count);
 
 	if (partition_count == 2)
 	{
@@ -476,7 +476,7 @@ static void get_partition_ordering_by_mismatch_bits(const int mismatch_bits[PART
 
 
 
-void kmeans_compute_partition_ordering(int xdim, int ydim, int zdim, int partition_count, const imageblock * blk, uint16_t *ordering)
+void kmeans_compute_partition_ordering(int xdim, int ydim, int zdim, int partition_count, int empty_partition_count, const imageblock * blk, uint16_t *ordering)
 {
 	int i;
 
@@ -512,7 +512,7 @@ void kmeans_compute_partition_ordering(int xdim, int ydim, int zdim, int partiti
 
 	int bitcounts[PARTITION_COUNT];
 	// for each entry in the partition table, count bits of partition-mismatch.
-	count_partition_mismatch_bits(xdim, ydim, zdim, partition_count, bitmaps, bitcounts);
+	count_partition_mismatch_bits(xdim, ydim, zdim, partition_count, empty_partition_count, bitmaps, bitcounts);
 
 	// finally, sort the partitions by bits-of-partition-mismatch
 	get_partition_ordering_by_mismatch_bits(bitcounts, ordering);

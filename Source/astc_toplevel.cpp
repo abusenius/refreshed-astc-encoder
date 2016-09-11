@@ -585,7 +585,7 @@ void encode_astc_image(const astc_codec_image * input_image, astc_codec_image * 
 	// before entering into the multithreadeed routine, ensure that the block size descriptors
 	// and the partition table descriptors needed actually exist.
 	get_block_size_descriptor(xdim, ydim, zdim);
-	get_partition_table(xdim, ydim, zdim, 0);
+	get_partition_table(xdim, ydim, zdim, 0, 0);
 
 	encode_astc_image_info *ai = new encode_astc_image_info[threadcount];
 	for (i = 0; i < threadcount; i++)

@@ -31,14 +31,13 @@
 
 #include <stdio.h>
 
-int realign_weights(astc_decode_mode decode_mode,
+int realign_weights(astc_decode_mode decode_mode, int partition_count, int empty_partition_count,
 					int xdim, int ydim, int zdim, const imageblock * blk, const error_weight_block * ewb, symbolic_compressed_block * scb, uint8_t * weight_set8, uint8_t * plane2_weight_set8)
 {
 	int i, j;
 
 	// get the appropriate partition descriptor.
-	int partition_count = scb->partition_count;
-	const partition_info *pt = get_partition_table(xdim, ydim, zdim, partition_count);
+	const partition_info *pt = get_partition_table(xdim, ydim, zdim, partition_count, empty_partition_count);
 	pt += scb->partition_index;
 
 	// get the appropriate block descriptor
@@ -743,8 +742,15 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 	for (size_t pcount = 2; pcount <= 4; pcount++)
 	{
 		OCL_CREATE_BUFFER(fbp.ptab[pcount], CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
-		OCL_WRITE_BUFFER(fbp.ptab[pcount], sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, pcount));
+		OCL_WRITE_BUFFER(fbp.ptab[pcount], sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, pcount, 0));
 	}
+
+	OCL_CREATE_BUFFER(fbp.ptab_pseudo[0], CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
+	OCL_CREATE_BUFFER(fbp.ptab_pseudo[1], CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
+	OCL_CREATE_BUFFER(fbp.ptab_pseudo[2], CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
+	OCL_WRITE_BUFFER(fbp.ptab_pseudo[0], sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, 2, 2));
+	OCL_WRITE_BUFFER(fbp.ptab_pseudo[1], sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, 2, 1));
+	OCL_WRITE_BUFFER(fbp.ptab_pseudo[2], sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, 3, 1));
 
 	OCL_CREATE_KERNEL(fbp, find_best_partitionings);
 	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 0, blk_stat);
@@ -912,7 +918,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 
 
 	// next, test mode #0. This mode uses 1 plane of weights and 1 partition.
-	compress_symbolic_batch_fixed_partition_1_plane(1, 0, blk_batch, scb_candidates);
+	compress_symbolic_batch_fixed_partition_1_plane(1, 0, 0, blk_batch, scb_candidates);
 		
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 	{
@@ -971,7 +977,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 		if (i == 3)
 			skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF | BLOCK_STAT_LOWEST_CORREL_CUTOFF | BLOCK_STAT_NO_ALPHA;
 
-		compress_symbolic_batch_fixed_partition_2_planes(1, 0, i, blk_batch, scb_candidates, skip_mode);
+		compress_symbolic_batch_fixed_partition_2_planes(1, 0, 0, i, blk_batch, scb_candidates, skip_mode);
 
 		for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 		{
@@ -996,12 +1002,12 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 	for (int partition_count = 2; partition_count <= 4; partition_count++)
 	{
 		//find_best_partitionings_batch_ocl(partition_count, blk_batch);
-		find_best_partitionings_batch(partition_count, blk_batch);
+		find_best_partitionings_batch(partition_count, 0, blk_batch);
 
 		skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
 		for (i = 0; i < 2; i++)
 		{
-			compress_symbolic_batch_fixed_partition_1_plane(partition_count, i, blk_batch, scb_candidates);
+			compress_symbolic_batch_fixed_partition_1_plane(partition_count, 0, i, blk_batch, scb_candidates);
 			
 			for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 			{
@@ -1042,7 +1048,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 		skip_mode = BLOCK_STAT_LOWEST_CORREL_CUTOFF | BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
 		for (i = 0; i < 2; i++)
 		{
-			compress_symbolic_batch_fixed_partition_2_planes(partition_count, i, 0, blk_batch, scb_candidates, skip_mode);
+			compress_symbolic_batch_fixed_partition_2_planes(partition_count, 0, i, 0, blk_batch, scb_candidates, skip_mode);
 			
 			for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 			{
@@ -1211,7 +1217,7 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 
 // function for compressing a block symbolically, given
 // that we have already decided on a partition
-void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(int partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates)
+void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(int partition_count, int empty_partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates)
 {
 	static const int free_bits_for_partition_count_1plane[5] = { 0, 115 - 4, 111 - 4 - PARTITION_BITS, 108 - 4 - PARTITION_BITS, 105 - 4 - PARTITION_BITS };
 	// maximum bits available for weights = (ei_bits - color_bits)
@@ -1221,7 +1227,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 
 	const block_size_descriptor_sorted *sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 0);
 	const decimation_table *const *ixtab3 = sorted_bsd->decimation_tables;
-	const partition_info *ptab = get_partition_table(xdim, ydim, zdim, partition_count);
+	const partition_info *ptab = get_partition_table(xdim, ydim, zdim, partition_count, empty_partition_count);
 
 
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
@@ -1509,7 +1515,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 
 			uint8_t *u8_weight_src = &tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * scb_idx];
 
-			int adjustments = realign_weights(decode_mode,
+			int adjustments = realign_weights(decode_mode, partition_count, empty_partition_count,
 				xdim, ydim, zdim,
 				blk, ewb, &scb_candidates[scb_idx],
 				u8_weight_src,
@@ -1539,7 +1545,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 }
 
 
-void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(int partition_count, int partition_offset, int separate_component, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates, uint8_t skip_mode)
+void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(int partition_count, int empty_partition_count, int partition_offset, int separate_component, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates, uint8_t skip_mode)
 {
 	static const int free_bits_for_partition_count_2planes[5] = { 0, 113 - 4, 109 - 4 - PARTITION_BITS, 106 - 4 - PARTITION_BITS, 103 - 4 - PARTITION_BITS };
 	// maximum bits available for weights = (ei_bits - color_bits)
@@ -1549,7 +1555,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 
 	const block_size_descriptor_sorted *sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 1);
 	const decimation_table *const *ixtab3 = sorted_bsd->decimation_tables;
-	const partition_info *ptab = get_partition_table(xdim, ydim, zdim, partition_count);
+	const partition_info *ptab = get_partition_table(xdim, ydim, zdim, partition_count, empty_partition_count);
 
 
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
@@ -1905,7 +1911,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 			uint8_t *u8_weight1_src = &tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * scb_idx];
 			uint8_t *u8_weight2_src = &tmpplanes.per_scb.u8_qdq_weights[MAX_WEIGHTS_PER_BLOCK * scb_idx + MAX_WEIGHTS_PER_BLOCK / 2];
 
-			int adjustments = realign_weights(decode_mode,
+			int adjustments = realign_weights(decode_mode, partition_count, empty_partition_count,
 				xdim, ydim, zdim,
 				blk, ewb, &scb_candidates[scb_idx],
 				u8_weight1_src,

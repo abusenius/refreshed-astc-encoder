@@ -34,6 +34,7 @@ struct find_best_partitionings_buffers
 
 	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_sequence;
 	cl_mem ptab[5];
+	cl_mem ptab_pseudo[3];
 
 	float weight_imprecision_estim_squared;
 	uint16_t partition_search_limits[5];
@@ -95,11 +96,11 @@ private:
 	compute_angular_endpoints_buffers cae;
 
 	void allocate_buffers(int max_blocks);
-	void compress_symbolic_batch_fixed_partition_1_plane(int partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates);
-	void compress_symbolic_batch_fixed_partition_2_planes(int partition_count, int partition_offset, int separate_component, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates, uint8_t skip_mode);
-	void find_best_partitionings_batch(int partition_count, const imageblock * blk_batch);
-	void find_best_partitionings_batch_ocl(int partition_count, const imageblock * blk_batch);
-	void find_best_partitionings(int partition_search_limit, int partition_count, const imageblock * pb, const error_weight_block * ewb, uint16_t *best_partitions_single_weight_plane, uint16_t *best_partitions_dual_weight_planes);
+	void compress_symbolic_batch_fixed_partition_1_plane(int partition_count, int empty_partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates);
+	void compress_symbolic_batch_fixed_partition_2_planes(int partition_count, int empty_partition_count, int partition_offset, int separate_component, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates, uint8_t skip_mode);
+	void find_best_partitionings_batch(int partition_count, int empty_partition_count, const imageblock * blk_batch);
+	void find_best_partitionings_batch_ocl(int partition_count, int empty_partition_count, const imageblock * blk_batch);
+	void find_best_partitionings(int partition_search_limit, int empty_partition_count, int partition_count, const imageblock * pb, const error_weight_block * ewb, uint16_t *best_partitions_single_weight_plane, uint16_t *best_partitions_dual_weight_planes);
 };
 
 
