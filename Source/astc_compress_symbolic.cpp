@@ -1138,13 +1138,14 @@ void SymbolicBatchCompressor::compute_angular_endpoints_1plane_batch_ocl()
 	OCL_CHECK_STATUS("Error in clFinish (cae1 kernel)");
 }
 
-void SymbolicBatchCompressor::compute_angular_endpoints_2planes_batch_ocl()
+void SymbolicBatchCompressor::compute_angular_endpoints_2planes_batch_ocl(uint8_t skip_mode)
 {
 	cl_int status;
 
 	cae.decimated_quantized_weights.write_to_device(MAX_WEIGHTS_PER_BLOCK * ewp.decimation_mode_limit_2planes * max_batch_size);
 	cae.decimated_weights.write_to_device(MAX_WEIGHTS_PER_BLOCK * ewp.decimation_mode_limit_2planes * max_batch_size);
 	blk_stat.write_to_device();
+	OCL_SET_KERNEL_ARG(cae.compute_angular_endpoints_2planes, 8, skip_mode);
 
 	constexpr size_t wgsize = 64;
 	size_t mod = batch_size % wgsize;
@@ -1599,7 +1600,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 
 
 	// for each mode, use the angular method to compute a shift.
-	compute_angular_endpoints_2planes_batch_ocl();
+	compute_angular_endpoints_2planes_batch_ocl(skip_mode);
 	//for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
 	//{
 	//	if (blk_stat[blk_idx] & skip_mode)

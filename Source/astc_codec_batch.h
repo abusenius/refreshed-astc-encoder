@@ -88,7 +88,7 @@ private:
 	//ocl_buffer<int4, ocl_buffer_type::DEVICE> idebug;
 	//ocl_buffer<float4, ocl_buffer_type::DEVICE> fdebug;
 	void compute_angular_endpoints_1plane_batch_ocl();
-	void compute_angular_endpoints_2planes_batch_ocl();
+	void compute_angular_endpoints_2planes_batch_ocl(uint8_t skip_mode);
 
 	// buffers used in compress_symbolic_batch_fixed_partition_*()
 	compress_fixed_partition_buffers tmpplanes;

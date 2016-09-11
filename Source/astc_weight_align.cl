@@ -437,10 +437,10 @@ __kernel
 void compute_angular_endpoints_2planes(global const uint8_t *blk_stat, global const block_size_descriptor_sorted * bsds,
 									   global const float *g_decimated_quantized_weights,
 									   global const float *g_decimated_weights,
-									   global float g_low_value1[WLIMIT_2PLANES], global float g_high_value1[WLIMIT_2PLANES], global float g_low_value2[WLIMIT_2PLANES], global float g_high_value2[WLIMIT_2PLANES])
+									   global float g_low_value1[WLIMIT_2PLANES], global float g_high_value1[WLIMIT_2PLANES], global float g_low_value2[WLIMIT_2PLANES], global float g_high_value2[WLIMIT_2PLANES], uint8_t skip_mode)
 {
 	uint blk_idx = get_global_id(0);
-	if (blk_stat[blk_idx] & BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF)
+	if (blk_stat[blk_idx] & skip_mode)
 		return;
 
 	global const float* decimated_quantized_weights = g_decimated_quantized_weights + DLIMIT_2PLANES * MAX_WEIGHTS_PER_BLOCK * blk_idx;
