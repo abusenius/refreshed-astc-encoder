@@ -726,10 +726,10 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 
 	const partition_statistics * pstat;
 	
-	for (size_t pcount = 2; pcount <= 4; pcount++)
+	for (size_t pmode = 2; pmode < 8; pmode++)
 	{
-		pstat = get_partition_stats(xdim, ydim, zdim, pcount);
-		fbp.partition_search_limits[pcount] = MIN(ewp.partition_search_limit, pstat->unique_partitionings_with_all_partitions);
+		pstat = get_partition_stats(xdim, ydim, zdim, pmode);
+		fbp.partition_search_limits[pmode] = MIN(ewp.partition_search_limit, pstat->unique_partitionings_with_all_partitions);
 	}
 
 	int texels_per_block = xdim * ydim * zdim;
@@ -739,18 +739,11 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 
 	OCL_CREATE_BUFFER(blk_buf, CL_MEM_READ_ONLY, sizeof(imageblock) * max_batch_size, NULL);
 	
-	for (size_t pcount = 2; pcount <= 4; pcount++)
+	for (size_t pmode = 2; pmode < 8; pmode++)
 	{
-		OCL_CREATE_BUFFER(fbp.ptab[pcount], CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
-		OCL_WRITE_BUFFER(fbp.ptab[pcount], sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, pcount, 0));
+		OCL_CREATE_BUFFER(fbp.ptab[pmode], CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
+		OCL_WRITE_BUFFER(fbp.ptab[pmode], sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, pmode, 0));
 	}
-
-	OCL_CREATE_BUFFER(fbp.ptab_pseudo[0], CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
-	OCL_CREATE_BUFFER(fbp.ptab_pseudo[1], CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
-	OCL_CREATE_BUFFER(fbp.ptab_pseudo[2], CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(partition_info) * PARTITION_COUNT, NULL);
-	OCL_WRITE_BUFFER(fbp.ptab_pseudo[0], sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, 2, 2));
-	OCL_WRITE_BUFFER(fbp.ptab_pseudo[1], sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, 2, 1));
-	OCL_WRITE_BUFFER(fbp.ptab_pseudo[2], sizeof(partition_info) * PARTITION_COUNT, get_partition_table(xdim, ydim, zdim, 3, 1));
 
 	OCL_CREATE_KERNEL(fbp, find_best_partitionings);
 	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 0, blk_stat);
@@ -1064,6 +1057,64 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 			}
 		}
 	}
+
+	// as the last hope test partitionings with empty partitions
+	//int part_cnt[] = { 2, 2, 3 };
+	//int empty_part_cnt[] = { 1, 2, 1 };
+	//for (size_t pm = 0; pm < 3; pm++)
+	//{
+	//	//find_best_partitionings_batch_ocl(partition_count, blk_batch);
+	//	find_best_partitionings_batch(part_cnt[pm], empty_part_cnt[pm], blk_batch);
+	//
+	//	skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+	//	for (i = 0; i < 2; i++)
+	//	{
+	//		compress_symbolic_batch_fixed_partition_1_plane(part_cnt[pm], empty_part_cnt[pm], i, blk_batch, scb_candidates);
+	//
+	//		for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+	//		{
+	//			if (blk_stat[blk_idx] & skip_mode)
+	//				continue;
+	//
+	//			convert_scb_partitioning_dense2sparse(&scb_candidates[SCB_CANDIDATES * blk_idx], SCB_CANDIDATES, part_cnt[pm], empty_part_cnt[pm], xdim, ydim, zdim);
+	//		
+	//			FIND_BEST_SCB_CANDIDATES();
+	//			if ((error_of_best_block[blk_idx] / error_weight_sum_batch[blk_idx]) < ewp.texel_avg_error_limit)
+	//			{
+	//				blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+	//				total_finished_blocks++;
+	//			};
+	//		}
+	//	}
+	//
+	//	if (total_finished_blocks == batch_size)
+	//		return;
+	//
+	//	int total_partition_count = part_cnt[pm] + empty_part_cnt[pm];
+	//	if (total_partition_count == 4)
+	//		continue;
+	//
+	//	skip_mode = BLOCK_STAT_LOWEST_CORREL_CUTOFF | BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+	//	for (i = 0; i < 2; i++)
+	//	{
+	//		compress_symbolic_batch_fixed_partition_2_planes(part_cnt[pm], empty_part_cnt[pm], i, 0, blk_batch, scb_candidates, skip_mode);
+	//
+	//		for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+	//		{
+	//			if (blk_stat[blk_idx] & skip_mode)
+	//				continue;
+	//
+	//			convert_scb_partitioning_dense2sparse(&scb_candidates[SCB_CANDIDATES * blk_idx], SCB_CANDIDATES, part_cnt[pm], empty_part_cnt[pm], xdim, ydim, zdim);
+	//		
+	//			FIND_BEST_SCB_CANDIDATES();
+	//			if ((error_of_best_block[blk_idx] / error_weight_sum_batch[blk_idx]) < ewp.texel_avg_error_limit)
+	//			{
+	//				blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+	//				total_finished_blocks++;
+	//			};
+	//		}
+	//	}
+	//}
 }
 
 SymbolicBatchCompressor::~SymbolicBatchCompressor()
@@ -1094,13 +1145,9 @@ SymbolicBatchCompressor::~SymbolicBatchCompressor()
 	OCL_RELEASE_OBJECT(Kernel, fbp.find_best_partitionings);
 	OCL_RELEASE_OBJECT(Kernel, cae.compute_angular_endpoints_1plane);
 	OCL_RELEASE_OBJECT(Kernel, cae.compute_angular_endpoints_2planes);
-	for (size_t i = 0; i < 3; i++)
+	for (size_t pmode = 7; pmode >= 2; pmode--)
 	{
-		OCL_RELEASE_OBJECT(MemObject, fbp.ptab_pseudo[i]);
-	}
-	for (size_t pcount = 4; pcount >= 2; pcount--)
-	{
-		OCL_RELEASE_OBJECT(MemObject, fbp.ptab[pcount]);
+		OCL_RELEASE_OBJECT(MemObject, fbp.ptab[pmode]);
 	}
 	OCL_RELEASE_OBJECT(MemObject, blk_buf);
 	OCL_RELEASE_OBJECT(MemObject, cae.bsd_1plane);
@@ -1233,6 +1280,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 	const block_size_descriptor_sorted *sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 0);
 	const decimation_table *const *ixtab3 = sorted_bsd->decimation_tables;
 	const partition_info *ptab = get_partition_table(xdim, ydim, zdim, partition_count, empty_partition_count);
+	int total_partition_count = partition_count + empty_partition_count;
 
 
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
@@ -1351,8 +1399,8 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 			// compute weight bitcount for the mode
 			int bits_used_by_weights = compute_ise_bitcount(ixtab3[decimation_mode]->num_weights,
 				(quantization_method)sorted_bsd->block_modes[i].quantization_mode);
-			int bitcount = free_bits_for_partition_count_1plane[partition_count] - bits_used_by_weights;
-			if (bits_used_by_weights > max_weight_bits_for_partition_count_1plane[partition_count])
+			int bitcount = free_bits_for_partition_count_1plane[total_partition_count] - bits_used_by_weights;
+			if (bits_used_by_weights > max_weight_bits_for_partition_count_1plane[total_partition_count])
 			{
 				qwt_errors[i] = 1e38f;
 				continue;
@@ -1495,6 +1543,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 
 				// store header fields
 				scb[i].partition_count = partition_count;
+				scb[i].empty_partition_count = empty_partition_count;
 				scb[i].partition_index = partition_index;
 				scb[i].color_quantization_level = scb[i].color_formats_matched ? color_quantization_level_mod : color_quantization_level;
 				scb[i].block_mode = sorted_bsd->block_modes[weight_mode].block_mode;
@@ -1561,6 +1610,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 	const block_size_descriptor_sorted *sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 1);
 	const decimation_table *const *ixtab3 = sorted_bsd->decimation_tables;
 	const partition_info *ptab = get_partition_table(xdim, ydim, zdim, partition_count, empty_partition_count);
+	int total_partition_count = partition_count + empty_partition_count;
 
 
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
@@ -1725,8 +1775,8 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 			// compute weight bitcount for the mode
 			int bits_used_by_weights = compute_ise_bitcount(2 * ixtab3[decimation_mode]->num_weights,
 				(quantization_method)sorted_bsd->block_modes[i].quantization_mode);
-			int bitcount = free_bits_for_partition_count_2planes[partition_count] - bits_used_by_weights;
-			if (bits_used_by_weights > max_weight_bits_for_partition_count_2planes[partition_count])
+			int bitcount = free_bits_for_partition_count_2planes[total_partition_count] - bits_used_by_weights;
+			if (bits_used_by_weights > max_weight_bits_for_partition_count_2planes[total_partition_count])
 			{
 				qwt_errors[i] = 1e38f;
 				continue;
@@ -1888,6 +1938,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 
 				// store header fields
 				scb[i].partition_count = partition_count;
+				scb[i].empty_partition_count = empty_partition_count;
 				scb[i].partition_index = partition_index;
 				scb[i].color_quantization_level = scb[i].color_formats_matched ? color_quantization_level_mod : color_quantization_level;
 				scb[i].block_mode = sorted_bsd->block_modes[weight_mode].block_mode;

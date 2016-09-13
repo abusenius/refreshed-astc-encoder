@@ -754,7 +754,8 @@ void SymbolicBatchCompressor::find_best_partitionings_batch(int partition_count,
 
 		uint16_t * partition_indices_1plane = &partition_indices_1plane_batch[0] + blk_idx * PARTITION_CANDIDATES;
 		uint16_t * partition_indices_2planes = &partition_indices_2planes_batch[0] + blk_idx * PARTITION_CANDIDATES;
-		find_best_partitionings(fbp.partition_search_limits[partition_count], partition_count, 0, blk, ewb,
+
+		find_best_partitionings(fbp.partition_search_limits[partition_count], partition_count, empty_partition_count, blk, ewb,
 			partition_indices_1plane, partition_indices_2planes);
 	}
 }
@@ -762,15 +763,9 @@ void SymbolicBatchCompressor::find_best_partitionings_batch(int partition_count,
 void SymbolicBatchCompressor::find_best_partitionings_batch_ocl(int partition_count, int empty_partition_count, const imageblock * blk_batch)
 {
 	cl_int status;
-	if (empty_partition_count == 0)
-	{
-		OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 6, fbp.ptab[partition_count]);
-	}
-	else
-	{
-		OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 6, fbp.ptab_pseudo[partition_count - empty_partition_count]);
-	}
-	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 7, fbp.partition_search_limits[partition_count]);
+	int pmode = partition_mode(partition_count, empty_partition_count);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 6, fbp.ptab[pmode]);
+	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 7, fbp.partition_search_limits[pmode]);
 	OCL_SET_KERNEL_ARG(fbp.find_best_partitionings, 8, partition_count);
 
 	for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)

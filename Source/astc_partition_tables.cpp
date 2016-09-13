@@ -19,12 +19,26 @@
 #include "astc_codec_internals.h"
 #include <assert.h>
 
+// table[2] - 2 partitions total 
+// table[3] - 3 partitions total 
+// table[4] - 4 partitions total 
+// table[5] - 4 partitions total (2 partitions + 2 empty)
+// table[6] - 3 partitions total (2 partitions + 1 empty)
+// table[7] - 4 partitions total (3 partitions + 1 empty)
 struct partition_tables_info
 {
-	partition_info *table[5];
-	partition_info *pseudo[3]; // partition patterns with some empty partitions
-	partition_statistics stats[5];
+	partition_info *table[8];
+	partition_statistics stats[8];
 };
+
+int partition_mode(int partition_count, int empty_partition_count)
+{
+	assert((partition_count == 2 && empty_partition_count == 2)
+		|| (partition_count == 2 && empty_partition_count == 1)
+		|| (partition_count == 3 && empty_partition_count == 1)
+		|| (partition_count >= 0 && empty_partition_count == 0));
+	return (empty_partition_count) ? (5 + partition_count - empty_partition_count) : partition_count;
+}
 
 static partition_tables_info *partition_tables[4096];
 
@@ -175,19 +189,20 @@ static void partition_table_count_unique_partitions(partition_tables_info * ptab
 	ptables->stats[1].unique_partitionings_with_all_partitions = 1;
 
 	uint16_t unique_partitions[5];
-	for (size_t pcount = 2; pcount <= 4; pcount++)
+	int pcount[] = { 0, 1, 2, 3, 4, 2, 2, 3 };
+	for (size_t pmode = 2; pmode < 8; pmode++)
 	{
 		memset(unique_partitions, 0, sizeof(unique_partitions));
 
-		partition_info * ptab = ptables->table[pcount];
+		partition_info * ptab = ptables->table[pmode];
 		for (size_t i = 0; i < PARTITION_COUNT; i++)
 			unique_partitions[ptab[i].partition_count]++;
 
-		ptables->stats[pcount].unique_partitionings_with_2_partitions = unique_partitions[2];
-		ptables->stats[pcount].unique_partitionings_with_3_partitions = unique_partitions[3];
-		ptables->stats[pcount].unique_partitionings_with_4_partitions = unique_partitions[4];
-		ptables->stats[pcount].unique_partitionings = unique_partitions[2] + unique_partitions[3] + unique_partitions[4];
-		ptables->stats[pcount].unique_partitionings_with_all_partitions = unique_partitions[pcount];
+		ptables->stats[pmode].unique_partitionings_with_2_partitions = unique_partitions[2];
+		ptables->stats[pmode].unique_partitionings_with_3_partitions = unique_partitions[3];
+		ptables->stats[pmode].unique_partitionings_with_4_partitions = unique_partitions[4];
+		ptables->stats[pmode].unique_partitionings = unique_partitions[2] + unique_partitions[3] + unique_partitions[4];
+		ptables->stats[pmode].unique_partitionings_with_all_partitions = unique_partitions[pcount[pmode]];
 	}
 }
 
@@ -361,6 +376,36 @@ void generate_one_partition_table(int xdim, int ydim, int zdim, int partition_co
 
 }
 
+//void convert_scb_partitioning_dense2sparse(symbolic_compressed_block *scb, size_t scb_count, int partition_count, int empty_partition_count, int xdim, int ydim, int zdim)
+//{
+//	const partition_info *ptab = get_partition_table(xdim, ydim, zdim, partition_count + empty_partition_count, 0);
+//	int8_t dense2sparse[4];
+//	for (size_t i = 0; i < scb_count; i++)
+//	{
+//		int8_t map_partition_count = 0;
+//		auto pi = scb[i].partition_index;
+//		for (int j = 0; j < 4; j++)
+//		{
+//			dense2sparse[j] = -1;
+//			if (ptab[pi].texels_per_partition[j] != 0)
+//				dense2sparse[map_partition_count++] = j;
+//		}
+//
+//		scb[i].partition_count = partition_count + empty_partition_count;
+//		for (int j = partition_count; j < partition_count + empty_partition_count; j++)
+//		{
+//			scb[i].color_formats[j] = scb[i].color_formats[0];
+//			memcpy(scb[i].color_values[j], scb[i].color_values[0], sizeof(scb->color_values[0]));
+//		}
+//		for (int j = partition_count - 1; j >= 0; j--)
+//		{
+//			int idx = dense2sparse[j];
+//			scb[i].color_formats[idx] = scb[i].color_formats[j];
+//			memcpy(scb[i].color_values[idx], scb[i].color_values[j], sizeof(scb->color_values[0]));
+//		}
+//	}
+//}
+
 static void partition_table_fill_pseudo(const partition_info *sparse, partition_info *dense, int partition_count)
 {
 	memset(dense, -1, sizeof(partition_info) * PARTITION_COUNT);
@@ -432,9 +477,9 @@ static void generate_partition_tables(int xdim, int ydim, int zdim)
 	partition_table->table[2] = two_partitions;
 	partition_table->table[3] = three_partitions;
 	partition_table->table[4] = four_partitions;
-	partition_table->pseudo[0] = two_partitions_and_two_empty;
-	partition_table->pseudo[1] = two_partitions_and_one_empty;
-	partition_table->pseudo[2] = three_partitions_and_one_empty;
+	partition_table->table[5] = two_partitions_and_two_empty;
+	partition_table->table[6] = two_partitions_and_one_empty;
+	partition_table->table[7] = three_partitions_and_one_empty;
 
 	generate_one_partition_table(xdim, ydim, zdim, 1, 0, one_partition);
 	for (i = 0; i < 1024; i++)
@@ -445,10 +490,10 @@ static void generate_partition_tables(int xdim, int ydim, int zdim)
 	}
 
 	partition_table_zap_equal_elements(xdim, ydim, zdim, partition_table);
-	partition_table_count_unique_partitions(partition_table);
 	partition_table_fill_pseudo(four_partitions, two_partitions_and_two_empty, 2);
 	partition_table_fill_pseudo(three_partitions, two_partitions_and_one_empty, 2);
 	partition_table_fill_pseudo(four_partitions, three_partitions_and_one_empty, 3);
+	partition_table_count_unique_partitions(partition_table);
 
 	partition_tables[xdim + 16 * ydim + 256 * zdim] = partition_table;
 }
@@ -460,21 +505,15 @@ const partition_info *get_partition_table(int xdim, int ydim, int zdim, int part
 	if (partition_tables[ptindex] == NULL)
 		generate_partition_tables(xdim, ydim, zdim);
 
-	if (empty_partition_count == 0)
-		return partition_tables[ptindex]->table[partition_count];
-
-	assert((partition_count == 2 && empty_partition_count == 2)
-		|| (partition_count == 2 && empty_partition_count == 1)
-		|| (partition_count == 3 && empty_partition_count == 1));
-
-	return partition_tables[ptindex]->pseudo[partition_count - empty_partition_count];
+	int pmode = partition_mode(partition_count, empty_partition_count);
+	return partition_tables[ptindex]->table[pmode];
 }
 
-const partition_statistics *get_partition_stats(int xdim, int ydim, int zdim, int partition_count)
+const partition_statistics *get_partition_stats(int xdim, int ydim, int zdim, int partition_mode)
 {
 	int ptindex = xdim + 16 * ydim + 256 * zdim;
 	if (partition_tables[ptindex] == NULL)
 		generate_partition_tables(xdim, ydim, zdim);
 
-	return &partition_tables[ptindex]->stats[partition_count];
+	return &partition_tables[ptindex]->stats[partition_mode];
 }

@@ -431,6 +431,7 @@ typedef struct
 	int error_block;			// 1 marks error block, 0 marks non-error-block.
 	int block_mode;				// 0 to 2047. Negative value marks constant-color block (-1: FP16, -2:UINT16)
 	int partition_count;		// 1 to 4; Zero marks a constant-color block.
+	int empty_partition_count;  // 0 to 2
 	int partition_index;		// 0 to 1023
 	int color_formats[4];		// color format for each endpoint color pair.
 	int color_formats_matched;	// color format for all endpoint pairs are matched.
@@ -476,11 +477,15 @@ extern int quantization_mode_table[17][128];
 // functions and data pertaining to partitioning
 // **********************************************
 
+int partition_mode(int partition_count, int empty_partition_count);
+
+void convert_scb_partitioning_dense2sparse(symbolic_compressed_block *scb, size_t scb_count, int partition_count, int empty_partition_count, int xdim, int ydim, int zdim);
+
 // function to get a pointer to a partition table or an array thereof.
 const partition_info *get_partition_table(int xdim, int ydim, int zdim, int partition_count, int empty_partition_count);
 
 // function to get a pointer to a table with unique partitionings count
-const partition_statistics *get_partition_stats(int xdim, int ydim, int zdim, int partition_count);
+const partition_statistics *get_partition_stats(int xdim, int ydim, int zdim, int partition_mode);
 
 
 // functions to compute color averages and dominant directions

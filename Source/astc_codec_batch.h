@@ -33,11 +33,10 @@ struct find_best_partitionings_buffers
 	cl_kernel find_best_partitionings;
 
 	ocl_buffer<uint16_t, ocl_buffer_type::DEVICE> partition_sequence;
-	cl_mem ptab[5];
-	cl_mem ptab_pseudo[3];
+	cl_mem ptab[8];
 
 	float weight_imprecision_estim_squared;
-	uint16_t partition_search_limits[5];
+	uint16_t partition_search_limits[8];
 };
 
 struct compute_angular_endpoints_buffers
