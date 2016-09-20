@@ -194,7 +194,8 @@ void decompress_symbolic_block(astc_decode_mode decode_mode,
 
 	// get the appropriate partition-table entry
 	int partition_count = scb->partition_count;
-	const partition_info *pt = get_partition_table(xdim, ydim, zdim, partition_count, 0);
+	int empty_partition_count = scb->empty_partition_count;
+	const partition_info *pt = get_partition_table(xdim, ydim, zdim, partition_count, empty_partition_count);
 	pt += scb->partition_index;
 
 	// get the appropriate block descriptor

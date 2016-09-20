@@ -469,7 +469,7 @@ void decode_ise(int quantization_level, int elements, const uint8_t * input_data
 int compute_ise_bitcount(int items, quantization_method quant);
 
 void build_quantization_mode_table(void);
-extern int quantization_mode_table[17][128];
+extern int quantization_mode_table[10][128];
 
 
 
@@ -478,8 +478,6 @@ extern int quantization_mode_table[17][128];
 // **********************************************
 
 int partition_mode(int partition_count, int empty_partition_count);
-
-void convert_scb_partitioning_dense2sparse(symbolic_compressed_block *scb, size_t scb_count, int partition_count, int empty_partition_count, int xdim, int ydim, int zdim);
 
 // function to get a pointer to a partition table or an array thereof.
 const partition_info *get_partition_table(int xdim, int ydim, int zdim, int partition_count, int empty_partition_count);
@@ -780,6 +778,7 @@ void compute_encoding_choice_errors(int xdim, int ydim, int zdim, const imageblo
 
 void determine_optimal_set_of_endpoint_formats_to_use(int xdim, int ydim, int zdim, const partition_info * pt, const imageblock * blk, const error_weight_block * ewb, const endpoints * ep,
 													  int separate_component,	// separate color component for 2-plane mode; -1 for single-plane mode
+													  int empty_partition_count,
 													  // bitcounts and errors computed for the various quantization methods
 													  const int *qwt_bitcounts, const float *qwt_errors, int weight_mode_limit,
 													  // output data

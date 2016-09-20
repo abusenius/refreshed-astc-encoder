@@ -528,23 +528,23 @@ const uint8_t color_unquantization_tables[21][256] = {
 // us the quantization level for a given integer count and number of bits that
 // the integer may fit into. This is needed for color decoding,
 // and for the color encoding.
-int quantization_mode_table[17][128];
+int quantization_mode_table[10][128];
 
 void build_quantization_mode_table(void)
 {
 	int i, j;
-	for (i = 0; i <= 16; i++)
+	for (i = 0; i < 10; i++)
 		for (j = 0; j < 128; j++)
 			quantization_mode_table[i][j] = -1;
 
 	for (i = 0; i < 21; i++)
-		for (j = 1; j <= 16; j++)
+		for (j = 1; j < 10; j++)
 		{
 			int p = compute_ise_bitcount(2 * j, (quantization_method) i);
 			if (p < 128)
 				quantization_mode_table[j][p] = i;
 		}
-	for (i = 0; i <= 16; i++)
+	for (i = 0; i < 10; i++)
 	{
 		int largest_value_so_far = -1;
 		for (j = 0; j < 128; j++)

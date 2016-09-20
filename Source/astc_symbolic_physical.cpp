@@ -231,6 +231,7 @@ void physical_to_symbolic(int xdim, int ydim, int zdim, physical_compressed_bloc
 	int i, j;
 
 	res->error_block = 0;
+	res->empty_partition_count = 0;
 
 	// get hold of the block-size descriptor and the decimation tables.
 	const block_size_descriptor *bsd = get_block_size_descriptor(xdim, ydim, zdim);

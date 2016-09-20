@@ -376,36 +376,6 @@ void generate_one_partition_table(int xdim, int ydim, int zdim, int partition_co
 
 }
 
-//void convert_scb_partitioning_dense2sparse(symbolic_compressed_block *scb, size_t scb_count, int partition_count, int empty_partition_count, int xdim, int ydim, int zdim)
-//{
-//	const partition_info *ptab = get_partition_table(xdim, ydim, zdim, partition_count + empty_partition_count, 0);
-//	int8_t dense2sparse[4];
-//	for (size_t i = 0; i < scb_count; i++)
-//	{
-//		int8_t map_partition_count = 0;
-//		auto pi = scb[i].partition_index;
-//		for (int j = 0; j < 4; j++)
-//		{
-//			dense2sparse[j] = -1;
-//			if (ptab[pi].texels_per_partition[j] != 0)
-//				dense2sparse[map_partition_count++] = j;
-//		}
-//
-//		scb[i].partition_count = partition_count + empty_partition_count;
-//		for (int j = partition_count; j < partition_count + empty_partition_count; j++)
-//		{
-//			scb[i].color_formats[j] = scb[i].color_formats[0];
-//			memcpy(scb[i].color_values[j], scb[i].color_values[0], sizeof(scb->color_values[0]));
-//		}
-//		for (int j = partition_count - 1; j >= 0; j--)
-//		{
-//			int idx = dense2sparse[j];
-//			scb[i].color_formats[idx] = scb[i].color_formats[j];
-//			memcpy(scb[i].color_values[idx], scb[i].color_values[j], sizeof(scb->color_values[0]));
-//		}
-//	}
-//}
-
 static void partition_table_fill_pseudo(const partition_info *sparse, partition_info *dense, int partition_count)
 {
 	memset(dense, -1, sizeof(partition_info) * PARTITION_COUNT);

@@ -797,11 +797,150 @@ SymbolicBatchCompressor::SymbolicBatchCompressor(int _max_batch_size, int _xdim,
 			{\
 				error_of_best_block[blk_idx] = errorval;\
 				scb_batch[blk_idx] = scb2test[j];\
-		\
 			}\
-		\
 		}}\
 
+
+void check_scb(const symbolic_compressed_block * sc, int xdim, int ydim, int zdim)
+{
+	if (sc->block_mode < 0)
+		return;
+	if (sc->error_block)
+		return;
+
+	const block_size_descriptor *bsd = get_block_size_descriptor(xdim, ydim, zdim);
+	const decimation_table *const *ixtab2 = bsd->decimation_tables;
+
+	int weight_count = ixtab2[bsd->block_modes[sc->block_mode].decimation_mode]->num_weights;
+	int weight_quantization_method = bsd->block_modes[sc->block_mode].quantization_mode;
+	int is_dual_plane = bsd->block_modes[sc->block_mode].is_dual_plane;
+
+	int real_weight_count = is_dual_plane ? 2 * weight_count : weight_count;
+
+	int bits_for_weights = compute_ise_bitcount(real_weight_count,
+		(quantization_method)weight_quantization_method);
+
+	int valuecount_to_encode = 0;
+	bool same_formats = true;
+	int format0 = sc->color_formats[0];
+	for (int i = 0; i < sc->partition_count; i++)
+	{
+		int vals = 2 * (sc->color_formats[i] >> 2) + 2;
+		valuecount_to_encode += vals;
+		same_formats = same_formats && format0 == sc->color_formats[i];
+	}
+
+	assert(same_formats == sc->color_formats_matched);
+
+	int bits_for_colors = compute_ise_bitcount(valuecount_to_encode, (quantization_method)sc->color_quantization_level);
+
+	int pcnt = sc->partition_count;
+	int bits_for_cem = 666;
+	switch (pcnt)
+	{
+	case 1:
+		bits_for_cem = 4;
+		break;
+	case 2:
+		bits_for_cem = same_formats ? 6 : 8;
+		break;
+	case 3:
+		bits_for_cem = same_formats ? 6 : 11;
+		break;
+	case 4:
+		bits_for_cem = same_formats ? 6 : 14;
+		break;
+	default:
+		break;
+	}
+
+	int total_bits = 13 + bits_for_cem + bits_for_colors + bits_for_weights + 2*is_dual_plane;
+	total_bits += (pcnt > 1) ? 10 : 0;
+
+	assert(total_bits <= 128);
+}
+
+
+#ifdef ENABLE_EMPTY_PARTITIONINGS
+void convert_scb_partitioning_dense2sparse(symbolic_compressed_block *scb, size_t scb_count, int partition_count, int empty_partition_count, int xdim, int ydim, int zdim)
+{
+	const partition_info *ptab = get_partition_table(xdim, ydim, zdim, partition_count + empty_partition_count, 0);
+	int8_t dense2sparse[4];
+	for (size_t i = 0; i < scb_count; i++)
+	{
+		assert(scb[i].error_block == 0);
+
+		int8_t map_partition_count = 0;
+		auto pi = scb[i].partition_index;
+		for (int j = 0; j < 4; j++)
+		{
+			dense2sparse[j] = -1;
+			if (ptab[pi].texels_per_partition[j] != 0)
+				dense2sparse[map_partition_count++] = j;
+		}
+
+		scb[i].partition_count = partition_count + empty_partition_count;
+		scb[i].empty_partition_count = 0;
+		int min_format = scb[i].color_formats[0];
+		int lo_class = min_format >> 2;
+		int hi_class = lo_class;
+		int partition_with_min_format = 0;
+		bool format_matches = true;
+		for (int j = 1; j < partition_count; j++)
+		{
+			if (scb[i].color_formats[j] < min_format)
+			{
+				min_format = scb[i].color_formats[j];
+				partition_with_min_format = j;
+			}
+			if (scb[i].color_formats[j] != scb[i].color_formats[0])
+				format_matches = false;
+			lo_class = MIN(lo_class, scb[i].color_formats[j] >> 2);
+			hi_class = MAX(hi_class, scb[i].color_formats[j] >> 2);
+		}
+		for (int j = partition_count; j < partition_count + empty_partition_count; j++)
+		{
+			scb[i].color_formats[j] = scb[i].color_formats[partition_with_min_format];
+			memcpy(scb[i].color_values[j], scb[i].color_values[partition_with_min_format], sizeof(scb->color_values[0]));
+		}
+		for (int j = partition_count - 1; j >= 0; j--)
+		{
+			int idx = dense2sparse[j];
+			scb[i].color_formats[idx] = scb[i].color_formats[j];
+			memcpy(scb[i].color_values[idx], scb[i].color_values[j], sizeof(scb->color_values[0]));
+		}
+
+
+		min_format = scb[i].color_formats[0];
+		partition_with_min_format = 0;
+		for (int j = 1; j < partition_count + empty_partition_count; j++)
+		{
+			if (scb[i].color_formats[j] < min_format)
+			{
+				min_format = scb[i].color_formats[j];
+				partition_with_min_format = j;
+			}
+		}
+
+		if (!scb[i].color_formats_matched && lo_class == hi_class && lo_class > 0)
+		{
+			min_format = 4 * (lo_class - 1); // guaranteed to be ldr format
+			format_matches = false;
+		}
+		for (int j = 0; j < partition_count + empty_partition_count; j++)
+		{
+			if (ptab[pi].texels_per_partition[j] == 0)
+			{
+				scb[i].color_formats[j] = min_format;
+				if (j != partition_with_min_format)
+					memcpy(scb[i].color_values[j], scb[i].color_values[partition_with_min_format], sizeof(scb->color_values[0]));
+			}
+		}
+
+		scb[i].color_formats_matched = format_matches;
+	}
+}
+#endif
 
 void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * input_image, const imageblock * blk_batch, symbolic_compressed_block * scb_batch, int cur_batch_size)
 {
@@ -909,7 +1048,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 	int i, j;
 	uint8_t skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
 
-
+	
 	// next, test mode #0. This mode uses 1 plane of weights and 1 partition.
 	compress_symbolic_batch_fixed_partition_1_plane(1, 0, 0, blk_batch, scb_candidates);
 		
@@ -926,7 +1065,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 			total_finished_blocks++;
 		};
 	}
-
+	
 	if (total_finished_blocks == batch_size)
 		return;
 
@@ -988,13 +1127,13 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 		if (total_finished_blocks == batch_size)
 			return;
 	}
-
+	
 
 
 	// find best blocks for 2, 3 and 4 partitions
 	for (int partition_count = 2; partition_count <= 4; partition_count++)
 	{
-		//find_best_partitionings_batch_ocl(partition_count, blk_batch);
+		//find_best_partitionings_batch_ocl(partition_count, 0, blk_batch);
 		find_best_partitionings_batch(partition_count, 0, blk_batch);
 
 		skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
@@ -1033,7 +1172,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 
 		// don't bother to check 4 partitions for dual plane of weightss, ever.
 		if (partition_count == 4)
-			return;
+			break;
 
 		if (total_finished_blocks == batch_size)
 			return;
@@ -1058,63 +1197,78 @@ void SymbolicBatchCompressor::compress_symbolic_batch(const astc_codec_image * i
 		}
 	}
 
+#ifdef ENABLE_EMPTY_PARTITIONINGS
 	// as the last hope test partitionings with empty partitions
-	//int part_cnt[] = { 2, 2, 3 };
-	//int empty_part_cnt[] = { 1, 2, 1 };
-	//for (size_t pm = 0; pm < 3; pm++)
-	//{
-	//	//find_best_partitionings_batch_ocl(partition_count, blk_batch);
-	//	find_best_partitionings_batch(part_cnt[pm], empty_part_cnt[pm], blk_batch);
-	//
-	//	skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
-	//	for (i = 0; i < 2; i++)
-	//	{
-	//		compress_symbolic_batch_fixed_partition_1_plane(part_cnt[pm], empty_part_cnt[pm], i, blk_batch, scb_candidates);
-	//
-	//		for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
-	//		{
-	//			if (blk_stat[blk_idx] & skip_mode)
-	//				continue;
-	//
-	//			convert_scb_partitioning_dense2sparse(&scb_candidates[SCB_CANDIDATES * blk_idx], SCB_CANDIDATES, part_cnt[pm], empty_part_cnt[pm], xdim, ydim, zdim);
-	//		
-	//			FIND_BEST_SCB_CANDIDATES();
-	//			if ((error_of_best_block[blk_idx] / error_weight_sum_batch[blk_idx]) < ewp.texel_avg_error_limit)
-	//			{
-	//				blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
-	//				total_finished_blocks++;
-	//			};
-	//		}
-	//	}
-	//
-	//	if (total_finished_blocks == batch_size)
-	//		return;
-	//
-	//	int total_partition_count = part_cnt[pm] + empty_part_cnt[pm];
-	//	if (total_partition_count == 4)
-	//		continue;
-	//
-	//	skip_mode = BLOCK_STAT_LOWEST_CORREL_CUTOFF | BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
-	//	for (i = 0; i < 2; i++)
-	//	{
-	//		compress_symbolic_batch_fixed_partition_2_planes(part_cnt[pm], empty_part_cnt[pm], i, 0, blk_batch, scb_candidates, skip_mode);
-	//
-	//		for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
-	//		{
-	//			if (blk_stat[blk_idx] & skip_mode)
-	//				continue;
-	//
-	//			convert_scb_partitioning_dense2sparse(&scb_candidates[SCB_CANDIDATES * blk_idx], SCB_CANDIDATES, part_cnt[pm], empty_part_cnt[pm], xdim, ydim, zdim);
-	//		
-	//			FIND_BEST_SCB_CANDIDATES();
-	//			if ((error_of_best_block[blk_idx] / error_weight_sum_batch[blk_idx]) < ewp.texel_avg_error_limit)
-	//			{
-	//				blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
-	//				total_finished_blocks++;
-	//			};
-	//		}
-	//	}
-	//}
+	int part_cnt[] = { 2, 2, 3 };
+	int empty_part_cnt[] = { 1, 2, 1 };
+	for (size_t pm = 0; pm < 3; pm++)
+	{
+		//find_best_partitionings_batch_ocl(partition_count, blk_batch);
+		find_best_partitionings_batch(part_cnt[pm], empty_part_cnt[pm], blk_batch);
+	
+		skip_mode = BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+
+		for (i = 0; i < 2; i++)
+		{
+			compress_symbolic_batch_fixed_partition_1_plane(part_cnt[pm], empty_part_cnt[pm], i, blk_batch, scb_candidates);
+	
+			for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+			{
+				if (blk_stat[blk_idx] & skip_mode)
+					continue;
+	
+				convert_scb_partitioning_dense2sparse(&scb_candidates[SCB_CANDIDATES * blk_idx], SCB_CANDIDATES, part_cnt[pm], empty_part_cnt[pm], xdim, ydim, zdim);
+	
+				for (j = 0; j < SCB_CANDIDATES; j++)
+				{
+					auto scb2test = &scb_candidates[SCB_CANDIDATES * blk_idx];
+					check_scb(scb2test + j, xdim, ydim, zdim);
+				}
+			
+				FIND_BEST_SCB_CANDIDATES();
+				if ((error_of_best_block[blk_idx] / error_weight_sum_batch[blk_idx]) < ewp.texel_avg_error_limit)
+				{
+					blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+					total_finished_blocks++;
+				};
+			}
+		}
+	
+		if (total_finished_blocks == batch_size)
+			return;
+		
+		int total_partition_count = part_cnt[pm] + empty_part_cnt[pm];
+		if (total_partition_count == 4)
+			continue;
+		
+		skip_mode = BLOCK_STAT_LOWEST_CORREL_CUTOFF | BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+		for (i = 0; i < 2; i++)
+		{
+			compress_symbolic_batch_fixed_partition_2_planes(part_cnt[pm], empty_part_cnt[pm], i, 0, blk_batch, scb_candidates, skip_mode);
+		
+			for (int blk_idx = 0; blk_idx < batch_size; blk_idx++)
+			{
+				if (blk_stat[blk_idx] & skip_mode)
+					continue;
+		
+				convert_scb_partitioning_dense2sparse(&scb_candidates[SCB_CANDIDATES * blk_idx], SCB_CANDIDATES, part_cnt[pm], empty_part_cnt[pm], xdim, ydim, zdim);
+			
+				for (j = 0; j < SCB_CANDIDATES; j++)
+				{
+					auto scb2test = &scb_candidates[SCB_CANDIDATES * blk_idx];
+					check_scb(scb2test + j, xdim, ydim, zdim);
+				}
+				FIND_BEST_SCB_CANDIDATES();
+				if ((error_of_best_block[blk_idx] / error_weight_sum_batch[blk_idx]) < ewp.texel_avg_error_limit)
+				{
+					blk_stat[blk_idx] |= BLOCK_STAT_TEXEL_AVG_ERROR_CUTOFF;
+					total_finished_blocks++;
+				};
+			}
+		}
+		
+	}
+#endif
 }
 
 SymbolicBatchCompressor::~SymbolicBatchCompressor()
@@ -1170,8 +1324,11 @@ void SymbolicBatchCompressor::compute_angular_endpoints_1plane_batch_ocl()
 	size_t gsize[] = { batch_size - mod };
 	size_t lsize[] = { wgsize };
 
-	status = clEnqueueNDRangeKernel(opencl_queue, cae.compute_angular_endpoints_1plane, 1, NULL, gsize, lsize, 0, NULL, NULL);
-	OCL_CHECK_STATUS("Unable to enqueue cae1 kernel");
+	if (gsize[0] > 0)
+	{
+		status = clEnqueueNDRangeKernel(opencl_queue, cae.compute_angular_endpoints_1plane, 1, NULL, gsize, lsize, 0, NULL, NULL);
+		OCL_CHECK_STATUS("Unable to enqueue cae1 kernel");
+	}
 
 	if (mod)
 	{
@@ -1204,8 +1361,11 @@ void SymbolicBatchCompressor::compute_angular_endpoints_2planes_batch_ocl(uint8_
 	size_t gsize[] = { batch_size - mod };
 	size_t lsize[] = { wgsize };
 
-	status = clEnqueueNDRangeKernel(opencl_queue, cae.compute_angular_endpoints_2planes, 1, NULL, gsize, lsize, 0, NULL, NULL);
-	OCL_CHECK_STATUS("Unable to enqueue cae2 kernel");
+	if (gsize[0] > 0)
+	{
+		status = clEnqueueNDRangeKernel(opencl_queue, cae.compute_angular_endpoints_2planes, 1, NULL, gsize, lsize, 0, NULL, NULL);
+		OCL_CHECK_STATUS("Unable to enqueue cae2 kernel");
+	}
 
 	if (mod)
 	{
@@ -1271,11 +1431,13 @@ void SymbolicBatchCompressor::allocate_buffers(int max_blocks)
 // that we have already decided on a partition
 void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(int partition_count, int empty_partition_count, int partition_offset, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates)
 {
+	// maximum bits available for weights and color data if endpoints are of the different type
 	static const int free_bits_for_partition_count_1plane[5] = { 0, 115 - 4, 111 - 4 - PARTITION_BITS, 108 - 4 - PARTITION_BITS, 105 - 4 - PARTITION_BITS };
-	// maximum bits available for weights = (ei_bits - color_bits)
+	// maximum bits available for weights = (ei_bits - color_bits - cem_bits)
 	// ei_bits - number of bits available for weights and color data if all color endpoints are of the same type
-	// color_bits - minimum number of bits needed to store color data (QUANT_5, FMT_LUMINANCE)
-	static const int max_weight_bits_for_partition_count_1plane[5] = { 0, 111 - 5, 99 - 10, 99 - 14, 99 - 19 };
+	// color_bits - minimum number of bits needed to store color data (QUANT_6, FMT_LUMINANCE)
+	// cem_bits - additional bits needed to store CEM selector if color endpoints are of the different type
+	static const int max_weight_bits_for_partition_count_1plane[5] = { 0, (111 - 6 - 0), (99 - 11 - 2), (99 - 16 - 5), (99 - 21 - 8) };
 
 	const block_size_descriptor_sorted *sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 0);
 	const decimation_table *const *ixtab3 = sorted_bsd->decimation_tables;
@@ -1429,16 +1591,11 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 		int *color_quantization_level = &tmpplanes.per_scb.color_quantization_level[SCB_CANDIDATES * blk_idx];
 		int *color_quantization_level_mod = &tmpplanes.per_scb.color_quantization_level_mod[SCB_CANDIDATES * blk_idx];
 		determine_optimal_set_of_endpoint_formats_to_use(xdim, ydim, zdim, pi, blk, ewb, &(ei->ep), -1,	// used to flag that we are in single-weight mode
-			qwt_bitcounts, qwt_errors, ewp.weight_mode_limit_1plane, partition_format_specifiers, weight_mode, color_quantization_level, color_quantization_level_mod);
+			empty_partition_count, qwt_bitcounts, qwt_errors, ewp.weight_mode_limit_1plane, partition_format_specifiers, weight_mode, color_quantization_level, color_quantization_level_mod);
 
 		for (int i = 0; i < 4; i++)
 		{
-			if (weight_mode[i] < 0)
-			{
-				scb[i].error_block = 1;
-				tmpplanes.scb_stat[blk_idx] |= 1 << i;
-				continue;
-			}
+			assert(weight_mode[i] >= 0 && weight_mode[i] < ewp.weight_mode_limit_1plane);
 
 			int scb_idx = blk_idx * SCB_CANDIDATES + i;
 			int decimation_mode = sorted_bsd->block_modes[weight_mode[i]].sorted_decimation_mode;
@@ -1516,7 +1673,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 				scb[i].color_formats_matched = 0;
 
 				if ((partition_count >= 2 && scb[i].color_formats[0] == scb[i].color_formats[1]
-					&& color_quantization_level != color_quantization_level_mod)
+					&& color_quantization_level < color_quantization_level_mod)
 					&& (partition_count == 2 || (scb[i].color_formats[0] == scb[i].color_formats[2] && (partition_count == 3 || (scb[i].color_formats[0] == scb[i].color_formats[3])))))
 				{
 					int colorvals[4][12];
@@ -1549,11 +1706,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 				scb[i].block_mode = sorted_bsd->block_modes[weight_mode].block_mode;
 				scb[i].error_block = 0;
 
-				if (scb[i].color_quantization_level < 4)
-				{
-					scb[i].error_block = 1;	// should never happen, but cannot prove it impossible.
-				}
-
+				assert(scb[i].color_quantization_level >= 4);
 			}
 		}
 
@@ -1601,11 +1754,13 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 
 void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(int partition_count, int empty_partition_count, int partition_offset, int separate_component, const imageblock * blk_batch, symbolic_compressed_block * scb_candidates, uint8_t skip_mode)
 {
+	// maximum bits available for weights and color data if endpoints are of the different type
 	static const int free_bits_for_partition_count_2planes[5] = { 0, 113 - 4, 109 - 4 - PARTITION_BITS, 106 - 4 - PARTITION_BITS, 103 - 4 - PARTITION_BITS };
-	// maximum bits available for weights = (ei_bits - color_bits)
+	// maximum bits available for weights = (ei_bits - color_bits - cem_bits)
 	// ei_bits - number of bits available for weights and color data if all color endpoints are of the same type
-	// color_bits - minimum number of bits needed to store color data (QUANT_5, FMT_LUMINANCE)
-	static const int max_weight_bits_for_partition_count_2planes[5] = { 0, 109 - 5, 97 - 10, 97 - 14, 97 - 19 };
+	// color_bits - minimum number of bits needed to store color data (QUANT_6, FMT_LUMINANCE)
+	// cem_bits - additional bits needed to store CEM selector if color endpoints are of the different type
+	static const int max_weight_bits_for_partition_count_2planes[5] = { 0, (109 - 6 - 0), (97 - 11 - 2), (97 - 16 - 5), (97 - 21 - 8) };
 
 	const block_size_descriptor_sorted *sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 1);
 	const decimation_table *const *ixtab3 = sorted_bsd->decimation_tables;
@@ -1823,16 +1978,11 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 			pi,
 			blk,
 			ewb,
-			&epm, separate_component, qwt_bitcounts, qwt_errors, ewp.weight_mode_limit_2planes, partition_format_specifiers, weight_mode, color_quantization_level, color_quantization_level_mod);
+			&epm, separate_component, empty_partition_count, qwt_bitcounts, qwt_errors, ewp.weight_mode_limit_2planes, partition_format_specifiers, weight_mode, color_quantization_level, color_quantization_level_mod);
 
 		for (int i = 0; i < 4; i++)
 		{
-			if (weight_mode[i] < 0)
-			{
-				scb[i].error_block = 1;
-				tmpplanes.scb_stat[blk_idx] |= 1 << i;
-				continue;
-			}
+			assert(weight_mode[i] >= 0 && weight_mode[i] < ewp.weight_mode_limit_2planes);
 
 			int scb_idx = blk_idx * SCB_CANDIDATES + i;
 			int decimation_mode = sorted_bsd->block_modes[weight_mode[i]].sorted_decimation_mode;
@@ -1911,7 +2061,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 				scb[i].color_formats_matched = 0;
 
 				if ((partition_count >= 2 && scb[i].color_formats[0] == scb[i].color_formats[1]
-					&& color_quantization_level != color_quantization_level_mod)
+					&& color_quantization_level < color_quantization_level_mod)
 					&& (partition_count == 2 || (scb[i].color_formats[0] == scb[i].color_formats[2] && (partition_count == 3 || (scb[i].color_formats[0] == scb[i].color_formats[3])))))
 				{
 					int colorvals[4][12];
@@ -1945,11 +2095,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 				scb[i].plane2_color_component = separate_component;
 				scb[i].error_block = 0;
 
-				if (scb[i].color_quantization_level < 4)
-				{
-					scb[i].error_block = 1;	// should never happen, but cannot prove it impossible
-				}
-
+				assert(scb[i].color_quantization_level >= 4);
 			}
 		}
 
@@ -1999,5 +2145,3 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_2_planes(i
 		}
 	}
 }
-
-

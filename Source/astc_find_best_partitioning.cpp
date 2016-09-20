@@ -787,8 +787,11 @@ void SymbolicBatchCompressor::find_best_partitionings_batch_ocl(int partition_co
 	size_t gsize[] = { batch_size - mod};
 	size_t lsize[] = { wgsize };
 
-	status = clEnqueueNDRangeKernel(opencl_queue, fbp.find_best_partitionings, 1, NULL, gsize, lsize, 0, NULL, NULL);
-	OCL_CHECK_STATUS("Unable to enqueue fbp kernel");
+	if (gsize[0] > 0)
+	{
+		status = clEnqueueNDRangeKernel(opencl_queue, fbp.find_best_partitionings, 1, NULL, gsize, lsize, 0, NULL, NULL);
+		OCL_CHECK_STATUS("Unable to enqueue fbp kernel");
+	}
 
 	if (mod)
 	{
