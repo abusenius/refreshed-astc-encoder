@@ -1595,6 +1595,7 @@ void SymbolicBatchCompressor::compress_symbolic_batch_fixed_partition_1_plane(in
 
 		for (int i = 0; i < 4; i++)
 		{
+			//fix low quality modes
 			assert(weight_mode[i] >= 0 && weight_mode[i] < ewp.weight_mode_limit_1plane);
 
 			int scb_idx = blk_idx * SCB_CANDIDATES + i;

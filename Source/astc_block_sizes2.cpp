@@ -14,6 +14,7 @@
  */ 
 /*----------------------------------------------------------------------------*/ 
 
+#include <assert.h>
 #include "astc_codec_internals.h"
 #include "math.h"
 
@@ -1008,6 +1009,27 @@ static void sort_decimation_modes(const block_size_descriptor * bsd, int is_dual
 	}
 }
 
+// find weight mode with lowest percentile
+static int find_best_weight_mode(const float *percentiles, const block_size_descriptor *bsd, int is_dual_plane)
+{
+	float lowest_percentile = INFINITY;
+	int best_weight_mode = -1;
+
+	for (int j = 0; j < MAX_WEIGHT_MODES; j++)
+	{
+		if ((bsd->block_modes[j].is_dual_plane != is_dual_plane) || !bsd->block_modes[j].permit_encode)
+			continue;
+
+		if (percentiles[j] < lowest_percentile)
+		{
+			lowest_percentile = percentiles[j];
+			best_weight_mode = j;
+		}
+	}
+
+	return best_weight_mode;
+}
+
 static void sort_weight_modes(const block_size_descriptor * bsd, int is_dual_plane, block_size_descriptor_sorted *sorted_bsd, const int * decimation_mode_mapping)
 {
 	float percentiles[MAX_WEIGHT_MODES];
@@ -1021,13 +1043,33 @@ static void sort_weight_modes(const block_size_descriptor * bsd, int is_dual_pla
 			valid_modes++;
 	}
 
-	for (int i = 0; i < valid_modes; i++)
+	assert(valid_modes >= 4);
+
+	int best_weight_mode = find_best_weight_mode(percentiles, bsd, is_dual_plane);
+	int best_decimation_mode = bsd->block_modes[best_weight_mode].decimation_mode;
+	int num_weights = bsd->decimation_tables[best_decimation_mode]->num_weights;
+	if (is_dual_plane)
+		num_weights *= 2;
+	// max available bits:
+	// 76 in 3partition 2planes mode
+	// 70 in 4partition 1plane mode
+	const int max_weight_bits = (is_dual_plane) ? 76 : 70;
+
+	for (int i = 0; i < 4; i++)
 	{
-		float lowest_percentile = INFINITY;
 		int best_block_mode = -1;
+		float lowest_percentile = INFINITY;
+
 		for (int j = 0; j < MAX_WEIGHT_MODES; j++)
 		{
-			if ((bsd->block_modes[j].is_dual_plane != is_dual_plane) || !bsd->block_modes[j].permit_encode)
+			if ((bsd->block_modes[j].is_dual_plane != is_dual_plane)
+				|| (bsd->block_modes[j].decimation_mode != best_decimation_mode)
+				|| !bsd->block_modes[j].permit_encode)
+				continue;
+
+			int bits_used_by_weights = compute_ise_bitcount(num_weights, (quantization_method)bsd->block_modes[j].quantization_mode);
+
+			if (bits_used_by_weights > max_weight_bits)
 				continue;
 
 			if (percentiles[j] < lowest_percentile)
@@ -1038,11 +1080,59 @@ static void sort_weight_modes(const block_size_descriptor * bsd, int is_dual_pla
 		}
 
 		percentiles[best_block_mode] = INFINITY;
-		int old_decimated_mode = bsd->block_modes[best_block_mode].decimation_mode;
 		sorted_bsd->block_modes[i].block_mode = best_block_mode;
 		sorted_bsd->block_modes[i].quantization_mode = bsd->block_modes[best_block_mode].quantization_mode;
-		sorted_bsd->block_modes[i].sorted_decimation_mode = decimation_mode_mapping[old_decimated_mode];
+		sorted_bsd->block_modes[i].sorted_decimation_mode = decimation_mode_mapping[best_decimation_mode];
 	}
+
+	for (int i = 4; i < valid_modes; i++)
+	{
+		int best_block_mode = find_best_weight_mode(percentiles, bsd, is_dual_plane);
+
+		percentiles[best_block_mode] = INFINITY;
+		int old_decimation_mode = bsd->block_modes[best_block_mode].decimation_mode;
+		sorted_bsd->block_modes[i].block_mode = best_block_mode;
+		sorted_bsd->block_modes[i].quantization_mode = bsd->block_modes[best_block_mode].quantization_mode;
+		sorted_bsd->block_modes[i].sorted_decimation_mode = decimation_mode_mapping[old_decimation_mode];
+	}
+}
+
+int get_decimation_mode_limit(int xdim, int ydim, int zdim, int is_dual_plane, float mode_cutoff)
+{
+	const block_size_descriptor * bsd = get_block_size_descriptor(xdim, ydim, zdim);
+	const block_size_descriptor_sorted * sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, is_dual_plane);
+
+	int i;
+
+	for (i = 0; i < MAX_DECIMATION_MODES; i++)
+		if (sorted_bsd->decimation_mode_maxprec[i] < 0 || sorted_bsd->decimation_mode_percentile[i] > mode_cutoff)
+			break;
+
+	assert(i > 0);
+
+	return i;
+}
+
+int get_weight_mode_limit(int xdim, int ydim, int zdim, int is_dual_plane, float mode_cutoff)
+{
+	const block_size_descriptor * bsd = get_block_size_descriptor(xdim, ydim, zdim);
+	const block_size_descriptor_sorted * sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, is_dual_plane);
+
+	int i;
+
+	for (i = 0; i < MAX_SORTED_WEIGHT_MODES; i++)
+	{
+		int block_mode = sorted_bsd->block_modes[i].block_mode;
+		if (block_mode < 0)
+			break;
+		if (i > 3 && bsd->block_modes[block_mode].percentile > mode_cutoff)
+			break;
+	}
+
+	// during compression we always test at least 4 modes
+	assert(i >= 4);
+
+	return i;
 }
 
 static void construct_sorted_block_size_descriptors(const block_size_descriptor * bsd, block_size_descriptor_sorted *sorted_bsd, int is_dual_plane)

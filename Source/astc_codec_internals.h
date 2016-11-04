@@ -454,6 +454,8 @@ typedef struct
 
 const block_size_descriptor *get_block_size_descriptor(int xdim, int ydim, int zdim);
 const block_size_descriptor_sorted *get_sorted_block_size_descriptor(int xdim, int ydim, int zdim, int is_dual_plane);
+int get_decimation_mode_limit(int xdim, int ydim, int zdim, int is_dual_plane, float mode_cutoff);
+int get_weight_mode_limit(int xdim, int ydim, int zdim, int is_dual_plane, float mode_cutoff);
 
 // ***********************************************************
 // functions and data pertaining to quantization and encoding

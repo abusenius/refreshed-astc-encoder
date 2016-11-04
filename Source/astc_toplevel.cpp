@@ -885,15 +885,6 @@ int main(int argc, char **argv)
 {
 	int i;
 
-	//printf("i  p1  p2\n");
-	//for (int i = -8; i < 8; i++)
-	//{
-	//	int p1 = i / 3;
-	//	int p2 = i % 3;
-	//	printf("%+i %+i %+i\n", i, p1, p2);
-	//}
-	//exit(-1);
-
 	test_inappropriate_extended_precision();
 	// initialization routines
 	prepare_angular_tables();
@@ -2715,41 +2706,10 @@ int main(int argc, char **argv)
 
 	if (opmode == 0 || opmode == 2)
 	{
-		const block_size_descriptor * bsd = get_block_size_descriptor(xdim, ydim, zdim);
-		const block_size_descriptor_sorted * sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 0);
-
-		for (i = 0; i < MAX_DECIMATION_MODES; i++)
-			if (sorted_bsd->decimation_mode_maxprec[i] < 0 || sorted_bsd->decimation_mode_percentile[i] > ewp.block_mode_cutoff)
-				break;
-		ewp.decimation_mode_limit_1plane = i;
-
-		for (i = 0; i < MAX_SORTED_WEIGHT_MODES; i++)
-		{
-			int block_mode = sorted_bsd->block_modes[i].block_mode;
-			if (block_mode < 0)
-				break;
-			if (bsd->block_modes[block_mode].percentile > ewp.block_mode_cutoff)
-				break;
-		}
-		ewp.weight_mode_limit_1plane = i;
-
-
-		sorted_bsd = get_sorted_block_size_descriptor(xdim, ydim, zdim, 1);
-
-		for (i = 0; i < MAX_DECIMATION_MODES; i++)
-			if (sorted_bsd->decimation_mode_maxprec[i] < 0 || sorted_bsd->decimation_mode_percentile[i] > ewp.block_mode_cutoff)
-				break;
-		ewp.decimation_mode_limit_2planes = i;
-
-		for (i = 0; i < MAX_SORTED_WEIGHT_MODES; i++)
-		{
-			int block_mode = sorted_bsd->block_modes[i].block_mode;
-			if (block_mode < 0)
-				break;
-			if (bsd->block_modes[block_mode].percentile > ewp.block_mode_cutoff)
-				break;
-		}
-		ewp.weight_mode_limit_2planes = i;
+		ewp.decimation_mode_limit_1plane = get_decimation_mode_limit(xdim, ydim, zdim, 0, ewp.block_mode_cutoff);
+		ewp.decimation_mode_limit_2planes = get_decimation_mode_limit(xdim, ydim, zdim, 1, ewp.block_mode_cutoff);
+		ewp.weight_mode_limit_1plane = get_weight_mode_limit(xdim, ydim, zdim, 0, ewp.block_mode_cutoff);
+		ewp.weight_mode_limit_2planes = get_weight_mode_limit(xdim, ydim, zdim, 1, ewp.block_mode_cutoff);
 
 		init_opencl(&oclo, batch_size, xdim, ydim, zdim, &ewp, decode_mode, silentmode);
 	}
